@@ -1,0 +1,54 @@
+# ─────────────────────────────────────────────────────────
+# Anti Gravity Deployments — Docker Compose
+# Development orchestration for frontend + backend
+# ─────────────────────────────────────────────────────────
+
+services:
+  # ─── Frontend (Next.js 15) ─────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ag-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ag-network
+
+  # ─── Backend (FastAPI) ─────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ag-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - UPLOAD_DIR=/tmp/ag-uploads
+    volumes:
+      - upload-data:/tmp/ag-uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - ag-network
+
+volumes:
+  upload-data:
+    driver: local
+
+networks:
+  ag-network:
+    driver: bridge
