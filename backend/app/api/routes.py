@@ -213,11 +213,41 @@ async def get_deployment(deployment_id: str):
 
 @router.delete("/deployments/{deployment_id}", tags=["Deployment"])
 async def delete_deployment(deployment_id: str):
-    """Delete a deployment."""
-    if not deployment_service.delete_deployment(deployment_id):
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    return {"message": "Deployment deleted", "deployment_id": deployment_id}
+    """
+    Fully delete deployment and cleanup resources.
+    """
 
+    deployment = deployment_service.get_deployment(deployment_id)
+
+    if not deployment:
+        raise HTTPException(
+            status_code=404,
+            detail="Deployment not found"
+        )
+
+    image_name = f"anti-gravity-{deployment_id}".lower()
+
+    workspace_path = str(
+        Path(deployment.analysis.project_root).parent.parent
+    )
+
+    lifecycle_service = ContainerLifecycleService()
+
+    result = lifecycle_service.delete_deployment_resources(
+        deployment_id=deployment_id,
+        image_name=image_name,
+        workspace_path=workspace_path,
+    )
+
+    if not result["success"]:
+        raise HTTPException(
+            status_code=500,
+            detail=result["error"]
+        )
+
+    deployment_service.delete_deployment(deployment_id)
+
+    return result
 # ─── Deployment Preparation ────────────────────────────────────────────────
 
 # ─── Deployment Preparation ────────────────────────────────────────────────
