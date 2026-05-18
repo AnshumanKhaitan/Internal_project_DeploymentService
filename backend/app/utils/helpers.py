@@ -36,7 +36,7 @@ def create_deployment_workspace(project_name: str) -> tuple[str, Path]:
         Tuple of (deployment_id, workspace_path)
         e.g. ("a1b2c3d4", Path("/tmp/ag-uploads/deployments/my-project/a1b2c3d4"))
     """
-    deployment_id = str(uuid.uuid4())[:8]
+    deployment_id = uuid.uuid4().hex[:8]
     safe_name = sanitize_container_name(project_name)
     workspace = get_deployments_dir() / safe_name / deployment_id
     workspace.mkdir(parents=True, exist_ok=True)

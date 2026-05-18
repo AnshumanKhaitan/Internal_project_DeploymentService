@@ -26,6 +26,7 @@ from app.models.schemas import (
     LogEntry,
 )
 from app.services.deployment import deployment_service
+from app.services.traefik_service import TraefikService
 from app.services.container_lifecycle import ContainerLifecycleService
 from app.services.health_checker import DeploymentHealthChecker
 from app.services.dockerfile_generator import DockerfileGenerator
@@ -196,27 +197,8 @@ async def upload_project(file: UploadFile = File(...)):
 
 # ─── Deployments ──────────────────────────────────────────────────────────────
 
-@router.get("/deployments", response_model=list[DeploymentState], tags=["Deployment"])
-async def list_deployments():
-    """List all deployments."""
-    return deployment_service.list_deployments()
-
-
 @router.get("/deployments/{deployment_id}", response_model=DeploymentState, tags=["Deployment"])
 async def get_deployment(deployment_id: str):
-    """Get the current state of a deployment."""
-    deployment = deployment_service.get_deployment(deployment_id)
-    if not deployment:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-    return deployment
-
-
-@router.delete("/deployments/{deployment_id}", tags=["Deployment"])
-async def delete_deployment(deployment_id: str):
-    """
-    Fully delete deployment and cleanup resources.
-    """
-
     deployment = deployment_service.get_deployment(deployment_id)
 
     if not deployment:
@@ -225,11 +207,31 @@ async def delete_deployment(deployment_id: str):
             detail="Deployment not found"
         )
 
+    return deployment
+@router.get("/deployments", tags=["Deployment"])
+async def list_deployments():
+    return deployment_service.list_deployments()
+@router.delete("/deployments/{deployment_id}", tags=["Deployment"])
+async def delete_deployment(deployment_id: str):
+    """
+    Fully delete deployment and cleanup resources.
+    """
+
+    with Session(engine) as session:
+        deployment_record = session.get(
+            DeploymentRecord,
+            deployment_id
+        )
+
+    if not deployment_record:
+        raise HTTPException(
+            status_code=404,
+            detail="Deployment not found"
+        )
+
     image_name = f"anti-gravity-{deployment_id}".lower()
 
-    workspace_path = str(
-        Path(deployment.analysis.project_root).parent.parent
-    )
+    workspace_path = f"./tmp/ag-uploads/deployments/{deployment_record.project_name}/{deployment_id}"
 
     lifecycle_service = ContainerLifecycleService()
 
@@ -265,20 +267,22 @@ async def prepare_deployment(deployment_id: str):
     - verify health
     """
 
-    deployment = deployment_service.get_deployment(deployment_id)
+    deployment = deployment_service.get_deployment(
+        deployment_id
+    )
 
     if not deployment:
-        raise HTTPException(status_code=404, detail="Deployment not found")
-
-    if not deployment.analysis:
         raise HTTPException(
-            status_code=400,
-            detail="Deployment analysis missing"
+            status_code=404,
+            detail="Deployment not found"
         )
 
     runtime = deployment.analysis.runtime.value
+    project_path = Path(
+        deployment.analysis.project_root
+    )
 
-    project_path = Path(deployment.analysis.project_root)
+    print("PROJECT PATH:", project_path)
 
     if not project_path.exists():
         raise HTTPException(
@@ -329,7 +333,7 @@ async def prepare_deployment(deployment_id: str):
         container_result = container_manager.create_and_start_container(
             image_name=image_name,
             container_name=container_name,
-            internal_port=deployment.analysis.detected_port,
+            internal_port=3000,
         )
 
         if not container_result["success"]:
@@ -350,6 +354,13 @@ async def prepare_deployment(deployment_id: str):
             else "unhealthy"
         )
 
+        # ── Register Traefik Route ─────────────────────
+
+        traefik_result = TraefikService.register_deployment_route(
+            deployment_id=deployment_id,
+            assigned_port=container_result["assigned_port"],
+        )
+
         return {
             "success": True,
             "deployment_id": deployment_id,
@@ -367,6 +378,7 @@ async def prepare_deployment(deployment_id: str):
             "deployment_status": deployment_status,
             "health_check": health_result,
             "application_url": health_result["url"],
+            "traefik_route": traefik_result["route"],
         }
 
     except Exception as e:
@@ -477,8 +489,6 @@ async def deployment_events(deployment_id: str):
     Placeholder — returns mock events for UI development.
     """
     deployment = deployment_service.get_deployment(deployment_id)
-    if not deployment:
-        raise HTTPException(status_code=404, detail="Deployment not found")
 
     return StreamingResponse(
         _mock_event_stream(deployment_id),

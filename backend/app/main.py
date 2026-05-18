@@ -6,6 +6,7 @@ Main application entry point for the backend API server.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.db import create_db_and_tables
 
 from app.api.routes import router
 
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
     )
+    create_db_and_tables()
 
     # CORS middleware — allow frontend to connect
     app.add_middleware(
