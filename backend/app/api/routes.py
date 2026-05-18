@@ -13,6 +13,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator
+from app.models.schemas import RuntimeType
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
@@ -64,7 +65,7 @@ async def health_check():
 # ─── Upload ───────────────────────────────────────────────────────────────────
 
 @router.post("/upload", response_model=UploadResponse, tags=["Deployment"])
-async def upload_project(file: UploadFile = File(...)):
+async def  upload_project(file: UploadFile = File(...)):
     """
     Upload a project ZIP file for deployment.
 
@@ -161,6 +162,35 @@ async def upload_project(file: UploadFile = File(...)):
     # ── Project scanning & analysis ─────────────────────────────────────
     try:
         analysis = project_scanner.scan(project_root)
+        package_json = (
+                project_root / "package.json"
+        )
+
+        requirements_txt = (
+                project_root / "requirements.txt"
+        )
+
+        if (
+                analysis.runtime.value == "unknown"
+        ):
+
+            if package_json.exists():
+
+                analysis.runtime = RuntimeType.NODEJS
+
+                print(
+                    "Runtime inferred from package.json"
+                )
+
+            elif requirements_txt.exists():
+
+                analysis.runtime = RuntimeType.PYTHON
+
+                print(
+                    "Runtime inferred from requirements.txt"
+                )
+
+        deployment.analysis = analysis
     except Exception as e:
         logger.exception("Project scan failed for %s", deployment_id)
         deployment_service.set_error(deployment_id, f"Scan failed: {str(e)}")
