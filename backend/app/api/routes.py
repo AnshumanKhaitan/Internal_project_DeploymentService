@@ -14,6 +14,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator
 from app.models.schemas import RuntimeType
+from app.services.manifest_scanner import (
+    ManifestScanner,
+)
+
+from app.services.deployment_planner import (
+    DeploymentPlanner,
+)
 
 from fastapi import APIRouter, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
@@ -191,6 +198,83 @@ async def  upload_project(file: UploadFile = File(...)):
                 )
 
         deployment.analysis = analysis
+        manifests = ManifestScanner.scan(
+            str(project_root)
+        )
+
+        print(
+            "\nMANIFESTS FOUND:\n",
+            manifests,
+        )
+
+        try:
+
+            deployment_plan = (
+                DeploymentPlanner.plan(
+                    manifests
+                )
+            )
+
+            print(
+                "\nDEPLOYMENT PLAN:\n",
+                deployment_plan,
+            )
+            from app.services.execution_engine import (
+                ExecutionEngine,
+            )
+
+            first_service = (
+                deployment_plan["services"][0]
+            )
+
+            dockerfile_content = (
+                ExecutionEngine.generate_dockerfile(
+                    first_service
+                )
+            )
+
+            print(
+                "\nGENERATED DOCKERFILE:\n",
+                dockerfile_content,
+            )
+
+            ExecutionEngine.save_dockerfile(
+                str(project_root),
+                dockerfile_content,
+            )
+
+            image_tag = (
+                ExecutionEngine.build_image(
+                    str(project_root),
+                    deployment_id,
+                )
+            )
+
+            print(
+                "\nIMAGE BUILT:\n",
+                image_tag,
+            )
+
+            container = (
+                ExecutionEngine.run_container(
+                    image_tag,
+                    deployment_id,
+                )
+            )
+
+            print(
+                "\nCONTAINER STARTED:\n",
+                container.id,
+            )
+
+        except Exception as e:
+
+            print(
+                "Deployment planning failed:",
+                e,
+            )
+
+            deployment_plan = {}
     except Exception as e:
         logger.exception("Project scan failed for %s", deployment_id)
         deployment_service.set_error(deployment_id, f"Scan failed: {str(e)}")
