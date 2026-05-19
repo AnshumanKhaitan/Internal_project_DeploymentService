@@ -44,7 +44,11 @@ class DeploymentPlanner:
         - add extra commands
         - add audit commands
 
-        Return ONLY valid JSON.
+        Return ONLY valid raw JSON.
+Do NOT include markdown.
+Do NOT include comments.
+Do NOT include explanations.
+Do NOT wrap response in ```json.
 
         EXAMPLE OUTPUT:
 
@@ -91,6 +95,7 @@ class DeploymentPlanner:
                 raw_output
                 .replace("```json", "")
                 .replace("```", "")
+                .strip()
             )
 
             lines = cleaned_output.splitlines()
@@ -108,7 +113,77 @@ class DeploymentPlanner:
                 cleaned_lines
             ).strip()
 
-            return json.loads(cleaned_output)
+            deployment_plan = json.loads(
+                cleaned_output
+            )
+
+            if isinstance(
+                    deployment_plan,
+                    list
+            ):
+                deployment_plan = {
+                    "services":
+                        deployment_plan
+                }
+
+            if "services" not in deployment_plan:
+                deployment_plan = {
+                    "services": []
+                }
+
+            if "services" not in deployment_plan:
+                deployment_plan = {
+                    "services": []
+                }
+
+            for service in deployment_plan["services"]:
+
+                workdir = (
+                    service["working_directory"]
+                    .lower()
+                )
+
+                if "frontend" in workdir:
+
+                    service["runtime"] = "nodejs"
+
+                    service["install_command"] = (
+                        "npm install"
+                    )
+
+                    service["start_command"] = (
+                        "npm start"
+                    )
+
+                    if not service.get(
+                            "start_command"
+                    ):
+                        service["start_command"] = (
+                            "npm run dev"
+                        )
+
+                if "backend" in workdir:
+
+                    service["runtime"] = "python"
+
+                    service["install_command"] = (
+                        "pip install -r requirements.txt"
+                    )
+
+                    service["start_command"] = (
+                        "uvicorn app.main:app "
+                        "--host 0.0.0.0 "
+                        "--port 8000"
+                    )
+
+                    if not service.get(
+                            "start_command"
+                    ):
+                        service["start_command"] = (
+                            "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+                        )
+
+            return deployment_plan
 
         except Exception:
 

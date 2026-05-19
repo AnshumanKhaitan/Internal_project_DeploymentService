@@ -41,6 +41,7 @@ interface DeploymentContextType {
   deploymentId: string | null
   analysis: ProjectAnalysis | null
   deploymentUrl: string | null
+  deploymentStatus: string
 
   // Environment variables
   envVars: EnvVar[]
@@ -71,6 +72,8 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
   const [deploymentId, setDeploymentId] = useState<string | null>(null)
   const [deploymentUrl, setDeploymentUrl] =
   useState<string | null>(null)
+  const [deploymentStatus, setDeploymentStatus] =
+  useState<string>("idle")
   const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null)
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
 
@@ -116,7 +119,6 @@ setStage("running")
         setEnvVars([])
       }
 
-      setStage("ready")
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Upload failed"
       setError(message)
@@ -137,17 +139,18 @@ setStage("running")
   return (
     <DeploymentContext.Provider
       value={{
-        stage,
-        error,
-        file,
-        uploadProgress,
-        deploymentId,
-        analysis,
-        envVars,
-        setEnvVars,
-        startUpload,
-        reset,
-      }}
+  stage,
+  error,
+  file,
+  uploadProgress,
+  deploymentId,
+  deploymentUrl,
+  deploymentStatus,
+  analysis,
+  envVars,
+  startUpload,
+  reset,
+}}
     >
       {children}
     </DeploymentContext.Provider>

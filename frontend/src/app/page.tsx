@@ -13,6 +13,9 @@ import {
   Zap,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import {
+  DeploymentHistory,
+} from "@/components/deployment/DeploymentHistory"
 import { Separator } from "@/components/ui/separator"
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import { UploadZone } from "@/components/deployment/UploadZone"
@@ -135,6 +138,7 @@ export default function DashboardPage() {
                 id="section-upload"
               >
                 <UploadZone />
+             
               </SectionCard>
 
               {/* Project Analysis */}
@@ -173,6 +177,7 @@ export default function DashboardPage() {
               >
                 <DeploymentLogs />
               </SectionCard>
+              <DeploymentHistory />
             </div>
           </div>
 

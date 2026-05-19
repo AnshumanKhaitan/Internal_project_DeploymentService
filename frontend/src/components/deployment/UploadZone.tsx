@@ -18,6 +18,7 @@ export function UploadZone() {
     error,
     file,
     deploymentUrl,
+    deploymentStatus,
     uploadProgress,
     startUpload,
     reset,
@@ -127,7 +128,9 @@ export function UploadZone() {
                 <p className="text-xs text-muted-foreground">
                   {formatSize(file.size)}
                   {isAnalyzing && " · Analyzing project..."}
-                  {isReady && " · Deployment running"}
+                  {deploymentStatus === "running"
+  ? "Running"
+  : deploymentStatus}
                   {isError && " · Upload failed"}
                 </p>
               </div>

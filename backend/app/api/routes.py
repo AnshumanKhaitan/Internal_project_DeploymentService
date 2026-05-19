@@ -8,13 +8,13 @@ Phase 2: Real ZIP upload, extraction, and project analysis.
 import asyncio
 import json
 import logging
-import shutil
-import tempfile
+import docker
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator
 from app.models.schemas import RuntimeType
 from app.services.execution_engine import (
+ExecutionEngine,
     DEPLOYMENT_LOGS,
 )
 from app.services.manifest_scanner import (
@@ -37,16 +37,9 @@ from app.models.schemas import (
     LogEntry,
 )
 from app.services.deployment import deployment_service
-from app.services.traefik_service import TraefikService
 from app.services.container_lifecycle import ContainerLifecycleService
-from app.services.health_checker import DeploymentHealthChecker
-from app.services.dockerfile_generator import DockerfileGenerator
-from app.services.docker_builder import DockerImageBuilder
-from app.services.container_logs import ContainerLogsService
-from app.services.container_manager import ContainerManager
 from app.services.scanner import project_scanner
 from app.utils.helpers import (
-    get_upload_dir,
     create_deployment_workspace,
     validate_zip_file,
     safe_extract_zip,
@@ -150,7 +143,7 @@ async def  upload_project(file: UploadFile = File(...)):
         )
 
     # ── Safe extraction ─────────────────────────────────────────────────
-    deployment.status = DeploymentStatus.ANALYZING
+    deployment.status = DeploymentStatus.RUNNING
     extract_dir = workspace / "extracted"
     extract_dir.mkdir(parents=True, exist_ok=True)
 
@@ -217,58 +210,107 @@ async def  upload_project(file: UploadFile = File(...)):
                     manifests
                 )
             )
+            if isinstance(
+                    deployment_plan,
+                    list
+            ):
+                deployment_plan = (
+                    deployment_plan[0]
+                )
 
             print(
                 "\nDEPLOYMENT PLAN:\n",
                 deployment_plan,
             )
-            from app.services.execution_engine import (
-                ExecutionEngine,
-            )
 
-            first_service = (
-                deployment_plan["services"][0]
-            )
+            deployed_services = []
 
-            dockerfile_content = (
-                ExecutionEngine.generate_dockerfile(
-                    first_service
+            for index, service in enumerate(
+                    deployment_plan["services"]
+            ):
+                working_directory = (
+                    service.get(
+                        "working_directory",
+                        ""
+                    )
+                    .lower()
                 )
-            )
 
-            print(
-                "\nGENERATED DOCKERFILE:\n",
-                dockerfile_content,
-            )
+                if working_directory in ["", "."]:
+                    print(
+                        "\nSKIPPING INVALID SERVICE:\n",
+                        service,
+                    )
 
-            ExecutionEngine.save_dockerfile(
-                str(project_root),
-                dockerfile_content,
-            )
-
-            image_tag = (
-                ExecutionEngine.build_image(
-                    str(project_root),
-                    deployment_id,
+                    continue
+                print(
+                    "\nDEPLOYING SERVICE:\n",
+                    service,
                 )
-            )
 
-            print(
-                "\nIMAGE BUILT:\n",
-                image_tag,
-            )
+                service_root = (
+                        Path(project_root)
+                        / service["working_directory"]
+                )
 
-            container = (
-                ExecutionEngine.run_container(
+                dockerfile_content = (
+                    ExecutionEngine.generate_dockerfile(
+                        service
+                    )
+                )
+
+                print(
+                    "\nGENERATED DOCKERFILE:\n",
+                    dockerfile_content,
+                )
+
+                ExecutionEngine.save_dockerfile(
+                    str(service_root),
+                    dockerfile_content,
+                )
+
+                image_tag = (
+                    ExecutionEngine.build_image(
+                        str(service_root),
+                        f"{deployment_id}-{index}",
+                    )
+                )
+
+                print(
+                    "\nIMAGE BUILT:\n",
                     image_tag,
-                    deployment_id,
                 )
-            )
 
-            print(
-                "\nCONTAINER STARTED:\n",
-                container.id,
-            )
+                container_data = (
+                    ExecutionEngine.run_container(
+                        image_tag,
+                        f"{deployment_id}-{index}",
+                    )
+                )
+
+                container = (
+                    container_data["container"]
+                )
+
+                host_port = (
+                    container_data["host_port"]
+                )
+
+                print(
+                    "\nCONTAINER STARTED:\n",
+                    container.id,
+                )
+
+                deployed_services.append({
+                    "runtime":
+                        service["runtime"],
+
+                    "working_directory":
+                        service["working_directory"],
+
+                    "url":
+                        f"http://localhost:{host_port}",
+                })
 
         except Exception as e:
 
@@ -288,7 +330,7 @@ async def  upload_project(file: UploadFile = File(...)):
 
     # ── Update deployment with analysis ─────────────────────────────────
     deployment_service.update_analysis(deployment_id, analysis)
-    deployment.status = DeploymentStatus.ANALYZING
+    deployment.status = DeploymentStatus.RUNNING
 
     # ── Clean up the ZIP file (keep extracted only) ─────────────────────
     try:
@@ -304,12 +346,22 @@ async def  upload_project(file: UploadFile = File(...)):
         analysis.dependencies_count,
     )
 
-    return UploadResponse(
-        deployment_id=deployment_id,
-        status=DeploymentStatus.ANALYZING,
-        message=f"Project '{project_name}' uploaded and analyzed successfully.",
-        analysis=analysis,
-    )
+    return {
+        "deployment_id":
+            deployment_id,
+
+        "status":
+            DeploymentStatus.RUNNING,
+
+        "message":
+            f"Project '{project_name}' deployed successfully.",
+
+        "analysis":
+            analysis.model_dump(),
+
+        "services":
+            deployed_services,
+    }
 
 
 # ─── Deployments ──────────────────────────────────────────────────────────────
@@ -365,172 +417,6 @@ async def delete_deployment(deployment_id: str):
         )
 
     deployment_service.delete_deployment(deployment_id)
-
-    return result
-# ─── Deployment Preparation ────────────────────────────────────────────────
-
-# ─── Deployment Preparation ────────────────────────────────────────────────
-
-@router.post("/deployments/{deployment_id}/prepare", tags=["Deployment"])
-async def prepare_deployment(deployment_id: str):
-    """
-    Prepare deployment by generating Dockerfile dynamically.
-
-    Flow:
-    - detect runtime
-    - generate Dockerfile
-    - build Docker image
-    - create/start container
-    - verify health
-    """
-
-    deployment = deployment_service.get_deployment(
-        deployment_id
-    )
-
-    if not deployment:
-        raise HTTPException(
-            status_code=404,
-            detail="Deployment not found"
-        )
-
-    runtime = deployment.analysis.runtime.value
-    project_path = Path(
-        deployment.analysis.project_root
-    )
-
-    print("PROJECT PATH:", project_path)
-
-    if not project_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail="Extracted project not found"
-        )
-
-    try:
-        # ── Generate Dockerfile ─────────────────────────────
-
-        dockerfile_content = DockerfileGenerator.generate(runtime)
-
-        dockerfile_path = DockerfileGenerator.save(
-            dockerfile_content,
-            str(project_path)
-        )
-
-        image_name = f"anti-gravity-{deployment_id}".lower()
-
-        container_name = f"container-{deployment_id}".lower()
-
-        logger.info(
-            "Dockerfile generated for %s (%s)",
-            deployment_id,
-            runtime,
-        )
-
-        # ── Build Docker image ─────────────────────────────
-
-        docker_builder = DockerImageBuilder()
-
-        build_result = docker_builder.build_image(
-            deployment_id=deployment_id,
-            project_path=str(project_path),
-            image_name=image_name,
-        )
-
-        if not build_result["success"]:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Docker build failed: {build_result['error']}"
-            )
-
-        # ── Start container ─────────────────────────────
-
-        container_manager = ContainerManager()
-
-        container_result = container_manager.create_and_start_container(
-            image_name=image_name,
-            container_name=container_name,
-            internal_port=3000,
-        )
-
-        if not container_result["success"]:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Container startup failed: {container_result['error']}"
-            )
-
-        # ── Deployment health check ─────────────────────
-
-        health_result = DeploymentHealthChecker.wait_until_healthy(
-            port=container_result["assigned_port"]
-        )
-
-        deployment_status = (
-            "healthy"
-            if health_result["healthy"]
-            else "unhealthy"
-        )
-
-        # ── Register Traefik Route ─────────────────────
-
-        traefik_result = TraefikService.register_deployment_route(
-            deployment_id=deployment_id,
-            assigned_port=container_result["assigned_port"],
-        )
-
-        return {
-            "success": True,
-            "deployment_id": deployment_id,
-            "runtime": runtime,
-            "dockerfile": dockerfile_content,
-            "dockerfile_path": dockerfile_path,
-            "image_name": image_name,
-            "container_name": container_name,
-            "image_id": build_result["image_id"],
-            "image_tags": build_result["image_tags"],
-            "build_logs": build_result["logs"],
-            "container_id": container_result["container_id"],
-            "container_status": container_result["status"],
-            "assigned_port": container_result["assigned_port"],
-            "deployment_status": deployment_status,
-            "health_check": health_result,
-            "application_url": health_result["url"],
-            "traefik_route": traefik_result["route"],
-        }
-
-    except Exception as e:
-        logger.exception("Deployment preparation failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
-
-
-# ─── Deployment Logs ───────────────────────────────────────────────────────
-
-@router.get(
-    "/deployments/{deployment_id}/logs",
-    tags=["Deployment"]
-)
-async def get_deployment_logs(deployment_id: str):
-    """
-    Fetch logs for deployment container.
-    """
-
-    container_name = f"container-{deployment_id}".lower()
-
-    logs_service = ContainerLogsService()
-
-    result = logs_service.get_logs(
-        container_name=container_name
-    )
-
-    if not result["success"]:
-        raise HTTPException(
-            status_code=500,
-            detail=result["error"]
-        )
 
     return result
 
@@ -597,6 +483,38 @@ async def _mock_event_stream(deployment_id: str) -> AsyncGenerator[str, None]:
         yield f"data: {json.dumps(event_data.model_dump())}\n\n"
         await asyncio.sleep(0.8)
 
+@router.get(
+    "/deployments/{deployment_id}/status"
+)
+async def get_status(
+    deployment_id: str,
+):
+
+    try:
+
+        client = docker.from_env()
+
+        container = (
+            client.containers.get(
+                f"container-{deployment_id}"
+            )
+        )
+
+        container.reload()
+
+        return {
+            "status":
+                container.status
+        }
+
+    except Exception as e:
+
+        return {
+            "status": "unknown",
+            "error": str(e),
+        }
+
+# Deployement LOGS -------------------------------------------------------
 @router.get(
     "/deployments/{deployment_id}/logs"
 )

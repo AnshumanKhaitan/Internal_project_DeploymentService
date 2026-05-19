@@ -9,7 +9,7 @@ import { useDeployment } from "@/lib/deployment-context"
 import { getRuntimeLabel, getFrameworkLabel } from "@/lib/api"
 
 export function DeploymentConfig() {
-  const { stage, analysis,deploymentUrl, deploymentId } = useDeployment()
+  const { stage, analysis,deploymentUrl,  deploymentId } = useDeployment()
 
   // Idle state
   if (stage === "idle") {

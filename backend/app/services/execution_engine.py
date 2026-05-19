@@ -145,4 +145,19 @@ CMD {ExecutionEngine.shell_to_cmd(start_command)}
             },
         )
 
-        return container
+        container.reload()
+
+        ports = (
+            container.attrs
+            ["NetworkSettings"]
+            ["Ports"]
+        )
+
+        host_port = list(
+            ports.values()
+        )[0][0]["HostPort"]
+
+        return {
+            "container": container,
+            "host_port": host_port,
+        }

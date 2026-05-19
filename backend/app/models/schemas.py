@@ -120,6 +120,7 @@ class UploadResponse(BaseModel):
     status: DeploymentStatus
     message: str
     analysis: Optional[ProjectAnalysis] = None
+    deployment_url: str | None = None
 
 
 class HealthResponse(BaseModel):

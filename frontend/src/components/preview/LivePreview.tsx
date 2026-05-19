@@ -33,6 +33,33 @@ export function LivePreview() {
     deploying: { label: "Deploying", color: "text-chart-3", dotColor: "bg-chart-3" },
     deployed: { label: "Live", color: "text-chart-2", dotColor: "bg-chart-2" },
     error: { label: "Error", color: "text-destructive", dotColor: "bg-destructive" },
+    running: {
+  color:
+    "border-green-500/20 bg-green-500/10 text-green-400",
+  dotColor:
+    "bg-green-400",
+},
+
+exited: {
+  color:
+    "border-red-500/20 bg-red-500/10 text-red-400",
+  dotColor:
+    "bg-red-400",
+},
+
+restarting: {
+  color:
+    "border-yellow-500/20 bg-yellow-500/10 text-yellow-400",
+  dotColor:
+    "bg-yellow-400",
+},
+
+unknown: {
+  color:
+    "border-muted bg-muted/10 text-muted-foreground",
+  dotColor:
+    "bg-muted-foreground",
+},
   }
 
   const currentStatus = statusConfig[stage]

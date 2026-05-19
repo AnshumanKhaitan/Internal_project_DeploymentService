@@ -13,30 +13,32 @@ class DockerfileGenerator:
         if runtime == "nodejs":
             return """FROM node:22
 
-WORKDIR /app
+WORKDIR /app/frontend
 
 COPY . .
 
 RUN npm install
 
+RUN npm run build
+
 EXPOSE 3000
 
 CMD ["npm", "start"]
-"""
+        """
 
         elif runtime == "python":
             return """FROM python:3.12
 
-WORKDIR /app
+        WORKDIR /app
 
-COPY . .
+        COPY . .
 
-RUN pip install -r requirements.txt
+        RUN pip install -r requirements.txt
 
-EXPOSE 8000
+        EXPOSE 8000
 
-CMD ["python", "app.py"]
-"""
+       CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+        """
 
         raise ValueError(f"Unsupported runtime: {runtime}")
 
