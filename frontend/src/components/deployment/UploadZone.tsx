@@ -7,9 +7,13 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { motion, AnimatePresence } from "framer-motion"
 import { useDeployment } from "@/lib/deployment-context"
+import {
+  DeploymentLogs,
+} from "./DeploymentLogs"
 
 export function UploadZone() {
   const {
+    deploymentId,
     stage,
     error,
     file,
@@ -262,6 +266,12 @@ export function UploadZone() {
       {deploymentUrl}
     </div>
   </motion.div>
+)}
+
+{deploymentId != null && (
+  <DeploymentLogs
+    deploymentId={deploymentId}
+  />
 )}
 
     </div>

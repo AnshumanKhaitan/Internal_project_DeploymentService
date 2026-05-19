@@ -1,5 +1,6 @@
 from pathlib import Path
 import docker
+DEPLOYMENT_LOGS = {}
 
 
 class ExecutionEngine:
@@ -109,12 +110,20 @@ CMD {ExecutionEngine.shell_to_cmd(start_command)}
             tag=image_tag,
         )
 
+        log_lines = []
+
         for log in logs:
 
             if "stream" in log:
-                print(
-                    log["stream"].strip()
-                )
+                line = log["stream"].strip()
+
+                print(line)
+
+                log_lines.append(line)
+
+        DEPLOYMENT_LOGS[
+            deployment_id
+        ] = log_lines
 
         return image_tag
 

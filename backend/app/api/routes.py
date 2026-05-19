@@ -14,6 +14,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator
 from app.models.schemas import RuntimeType
+from app.services.execution_engine import (
+    DEPLOYMENT_LOGS,
+)
 from app.services.manifest_scanner import (
     ManifestScanner,
 )
@@ -594,7 +597,21 @@ async def _mock_event_stream(deployment_id: str) -> AsyncGenerator[str, None]:
         yield f"data: {json.dumps(event_data.model_dump())}\n\n"
         await asyncio.sleep(0.8)
 
+@router.get(
+    "/deployments/{deployment_id}/logs"
+)
+async def get_logs(
+    deployment_id: str,
+):
 
+    logs = DEPLOYMENT_LOGS.get(
+        deployment_id,
+        [],
+    )
+
+    return {
+        "logs": logs
+    }
 @router.get("/deployments/{deployment_id}/events", tags=["Deployment"])
 async def deployment_events(deployment_id: str):
     """
