@@ -13,6 +13,7 @@ export function UploadZone() {
     stage,
     error,
     file,
+    deploymentUrl,
     uploadProgress,
     startUpload,
     reset,
@@ -20,7 +21,7 @@ export function UploadZone() {
 
   const isUploading = stage === "uploading"
   const isAnalyzing = stage === "analyzing"
-  const isReady = stage === "ready"
+  const isReady = stage === "running"
   const isError = stage === "error"
   const isProcessing = isUploading || isAnalyzing
 
@@ -122,7 +123,7 @@ export function UploadZone() {
                 <p className="text-xs text-muted-foreground">
                   {formatSize(file.size)}
                   {isAnalyzing && " · Analyzing project..."}
-                  {isReady && " · Analysis complete"}
+                  {isReady && " · Deployment running"}
                   {isError && " · Upload failed"}
                 </p>
               </div>
@@ -225,6 +226,44 @@ export function UploadZone() {
           </Button>
         </motion.div>
       )}
+
+      {isReady && (
+  <motion.div
+    initial={{ opacity: 0, y: 10 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="rounded-xl border border-chart-2/20 bg-chart-2/5 p-4"
+  >
+    <div className="flex items-center justify-between gap-3">
+      <div>
+        <p className="text-sm font-semibold text-chart-2">
+          Deployment Running
+        </p>
+
+        <p className="text-xs text-muted-foreground mt-1">
+          Your application is live and accessible
+        </p>
+      </div>
+
+      <Button
+        size="sm"
+        className="bg-chart-2 hover:bg-chart-2/90 text-black"
+        onClick={() => {
+          window.open(
+            deploymentUrl!,
+            "_blank"
+          )
+        }}
+      >
+        Open App
+      </Button>
+    </div>
+
+    <div className="mt-3 rounded-lg bg-black/40 px-3 py-2 font-mono text-xs text-chart-2">
+      {deploymentUrl}
+    </div>
+  </motion.div>
+)}
+
     </div>
   )
 }

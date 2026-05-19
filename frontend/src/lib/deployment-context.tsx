@@ -12,7 +12,14 @@ import { uploadProject, type ProjectAnalysis, type UploadResponse } from "@/lib/
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type PipelineStage = "idle" | "uploading" | "analyzing" | "ready" | "deploying" | "deployed" | "error"
+export type PipelineStage =
+  | "idle"
+  | "uploading"
+  | "analyzing"
+  | "building"
+  | "starting"
+  | "running"
+  | "error"
 
 export interface EnvVar {
   id: string
@@ -33,6 +40,7 @@ interface DeploymentContextType {
   // Analysis results
   deploymentId: string | null
   analysis: ProjectAnalysis | null
+  deploymentUrl: string | null
 
   // Environment variables
   envVars: EnvVar[]
@@ -61,6 +69,8 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
   const [file, setFile] = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [deploymentId, setDeploymentId] = useState<string | null>(null)
+  const [deploymentUrl, setDeploymentUrl] =
+  useState<string | null>(null)
   const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null)
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
 
@@ -68,7 +78,7 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
     setFile(selectedFile)
     setError(null)
     setUploadProgress(0)
-    setStage("uploading")
+   
 
     try {
       const response: UploadResponse = await uploadProject(
@@ -85,6 +95,11 @@ export function DeploymentProvider({ children }: { children: ReactNode }) {
       // Upload + analysis complete
       setDeploymentId(response.deployment_id)
       setAnalysis(response.analysis)
+      setDeploymentUrl(
+  response.deployment_url
+)
+
+setStage("running")
 
       // Auto-generate env vars from detected template keys
       if (response.analysis?.env_template_keys?.length) {
