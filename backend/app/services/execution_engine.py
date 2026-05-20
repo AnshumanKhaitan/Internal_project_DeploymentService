@@ -27,7 +27,7 @@ class ExecutionEngine:
             service["start_command"]
         )
 
-        if runtime == "nodejs":
+        if runtime in ["nodejs", "node"]:
 
             base_image = "node:22"
 
@@ -127,22 +127,26 @@ CMD {ExecutionEngine.shell_to_cmd(start_command)}
 
         return image_tag
 
-    @staticmethod
+    @classmethod
     def run_container(
+            cls,
             image_tag: str,
-            deployment_id: str,
-            port: int = 3000,
+            container_name: str,
     ):
+
+        import docker
 
         client = docker.from_env()
 
+        runtime_port = 3000
+
         container = client.containers.run(
-            image_tag,
+            image=image_tag,
             detach=True,
-            name=f"container-{deployment_id}",
             ports={
-                f"{port}/tcp": None
+                f"{runtime_port}/tcp": None
             },
+            name=f"container-{container_name}",
         )
 
         container.reload()
@@ -153,9 +157,28 @@ CMD {ExecutionEngine.shell_to_cmd(start_command)}
             ["Ports"]
         )
 
-        host_port = list(
-            ports.values()
-        )[0][0]["HostPort"]
+        print(
+            "\nCONTAINER PORTS:\n",
+            ports,
+        )
+
+        port_data = ports.get(
+            f"{runtime_port}/tcp"
+        )
+
+        if not port_data:
+            raise Exception(
+                "No port mapping found"
+            )
+
+        host_port = (
+            port_data[0]["HostPort"]
+        )
+
+        print(
+            "\nHOST PORT:\n",
+            host_port,
+        )
 
         return {
             "container": container,

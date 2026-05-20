@@ -45,6 +45,12 @@ export interface UploadResponse {
   status: string;
   message: string;
   analysis: ProjectAnalysis | null;
+  preview_url: string | null;
+  services?: {
+    runtime: string;
+    working_directory: string;
+    url: string;
+  }[];
 }
 
 export interface DeploymentState {

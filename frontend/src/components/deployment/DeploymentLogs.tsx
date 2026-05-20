@@ -15,8 +15,9 @@ export function DeploymentLogs({
 
   useEffect(() => {
 
-    
-  if (!deploymentId) return
+  if (!deploymentId) {
+    return
+  }
 
   const fetchLogs = async () => {
 
@@ -27,26 +28,25 @@ export function DeploymentLogs({
           `http://localhost:8000/api/deployments/${deploymentId}/logs`
         )
 
+      if (!response.ok) {
+        return
+      }
+
       const data =
         await response.json()
 
       setLogs(data.logs || [])
 
-    } catch (err) {
+    } catch (error) {
 
-      console.error(err)
-
+      console.error(
+        "Failed to fetch logs:",
+        error
+      )
     }
   }
 
   fetchLogs()
-
-  const interval = setInterval(
-    fetchLogs,
-    2000
-  )
-
-  return () => clearInterval(interval)
 
 }, [deploymentId])
 

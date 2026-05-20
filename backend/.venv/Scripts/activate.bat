@@ -8,7 +8,7 @@ if defined _OLD_CODEPAGE (
     "%SystemRoot%\System32\chcp.com" 65001 > nul
 )
 
-set VIRTUAL_ENV=C:\Users\KIIT0001\.gemini\antigravity\scratch\anti-gravity-deployments\backend\.venv
+set VIRTUAL_ENV=C:\Users\KIIT0001\Desktop\anti-gravity-deployments\Internal_project_DeploymentService\backend\.venv
 
 if not defined PROMPT set PROMPT=$P$G
 

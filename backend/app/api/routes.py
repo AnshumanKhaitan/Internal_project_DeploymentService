@@ -194,9 +194,17 @@ async def  upload_project(file: UploadFile = File(...)):
                 )
 
         deployment.analysis = analysis
-        manifests = ManifestScanner.scan(
+        scan_result = ManifestScanner.scan(
             str(project_root)
         )
+
+        manifests = scan_result["manifests"]
+
+        runtime = scan_result["runtime"]
+
+        framework = scan_result["framework"]
+
+        entry_points = scan_result["entry_points"]
 
         print(
             "\nMANIFESTS FOUND:\n",
@@ -207,7 +215,10 @@ async def  upload_project(file: UploadFile = File(...)):
 
             deployment_plan = (
                 DeploymentPlanner.plan(
-                    manifests
+                    manifests=manifests,
+                    runtime=runtime,
+                    framework=framework,
+                    entry_points=entry_points,
                 )
             )
             if isinstance(
@@ -224,6 +235,7 @@ async def  upload_project(file: UploadFile = File(...)):
             )
 
             deployed_services = []
+            preview_url = None
 
             for index, service in enumerate(
                     deployment_plan["services"]
@@ -231,18 +243,43 @@ async def  upload_project(file: UploadFile = File(...)):
                 working_directory = (
                     service.get(
                         "working_directory",
+                        "."
+                    )
+                    .strip()
+                )
+
+                runtime = (
+                    service.get(
+                        "runtime",
                         ""
                     )
                     .lower()
                 )
 
-                if working_directory in ["", "."]:
+                if runtime == "nodejs":
+                    runtime = "node"
+
+                service["runtime"] = runtime
+                service["working_directory"] = working_directory
+
+                service_root = (
+                        Path(project_root)
+                        / working_directory
+                ).resolve()
+
+                print(
+                    "\nSERVICE ROOT:\n",
+                    service_root,
+                )
+
+                if not service_root.exists():
                     print(
-                        "\nSKIPPING INVALID SERVICE:\n",
-                        service,
+                        "\nINVALID SERVICE ROOT:\n",
+                        service_root,
                     )
 
                     continue
+
                 print(
                     "\nDEPLOYING SERVICE:\n",
                     service,
@@ -301,6 +338,15 @@ async def  upload_project(file: UploadFile = File(...)):
                     container.id,
                 )
 
+                service_url = f"http://localhost:{host_port}"
+
+                if preview_url is None:
+                    preview_url = service_url
+                    print(
+                        "\nPREVIEW URL:\n",
+                        preview_url,
+                    )
+
                 deployed_services.append({
                     "runtime":
                         service["runtime"],
@@ -309,7 +355,7 @@ async def  upload_project(file: UploadFile = File(...)):
                         service["working_directory"],
 
                     "url":
-                        f"http://localhost:{host_port}",
+                        service_url,
                 })
 
         except Exception as e:
@@ -358,6 +404,9 @@ async def  upload_project(file: UploadFile = File(...)):
 
         "analysis":
             analysis.model_dump(),
+
+        "preview_url":
+            preview_url,
 
         "services":
             deployed_services,

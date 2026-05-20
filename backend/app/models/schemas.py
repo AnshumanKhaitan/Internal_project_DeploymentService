@@ -115,13 +115,18 @@ class DeploymentState(BaseModel):
 
 
 class UploadResponse(BaseModel):
-    """Response returned after uploading a project ZIP."""
-    deployment_id: str
-    status: DeploymentStatus
-    message: str
-    analysis: Optional[ProjectAnalysis] = None
-    deployment_url: str | None = None
 
+    deployment_id: str
+
+    status: DeploymentStatus
+
+    message: str
+
+    analysis: ProjectAnalysis | None = None
+
+    preview_url: str | None = None
+
+    services: list[dict] = []
 
 class HealthResponse(BaseModel):
     """Health check response."""

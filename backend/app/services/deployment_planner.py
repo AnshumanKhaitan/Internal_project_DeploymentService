@@ -12,60 +12,69 @@ class DeploymentPlanner:
 
     @classmethod
     def plan(
-        cls,
-        manifests: list,
+            cls,
+            manifests: list,
+            runtime: str,
+            framework: str,
+            entry_points: list,
     ):
 
         prompt = f"""
-        You are a deployment planner.
+You are a deployment planning engine.
 
-        Your job is to generate deployment instructions
-        ONLY from manifest file names and paths.
+Your task is to analyze project manifest files and return a deployment plan.
 
-        STRICT RULES:
+Return ONLY valid JSON.
 
-        - package.json means Node.js runtime
-        - requirements.txt means Python runtime
+Expected format:
 
-        Rules:
-        - package.json:
-            install_command = npm install
-            start_command = npm start
+{{
+  "services": [
+    {{
+      "runtime": "nodejs",
+      "working_directory": ".",
+      "install_command": "npm install",
+      "start_command": "npm start"
+    }}
+  ]
+}}
 
-        - requirements.txt:
-            install_command = pip install -r requirements.txt
+Rules:
 
-        DO NOT:
-        - explain anything
-        - add comments
-        - add markdown
-        - add placeholders
-        - add assumptions
-        - add extra commands
-        - add audit commands
+- Always return valid JSON
+- Never include markdown
+- Never include explanations
+- Never include comments
+- Never include text outside JSON
+- Always include:
+    - runtime
+    - working_directory
+    - install_command
+    - start_command
 
-        Return ONLY valid raw JSON.
-Do NOT include markdown.
-Do NOT include comments.
-Do NOT include explanations.
-Do NOT wrap response in ```json.
+Framework Rules:
 
-        EXAMPLE OUTPUT:
+- If Next.js detected:
+    start_command = "npm run dev"
 
-        {{
-          "services": [
-            {{
-              "runtime": "nodejs",
-              "working_directory": ".",
-              "install_command": "npm install",
-              "start_command": "npm start"
-            }}
-          ]
-        }}
+- If Vite detected:
+    start_command = "npm run dev"
 
-        Manifest Files:
-        {json.dumps(manifests, indent=2)}
-        """
+- If Express detected:
+    start_command = "npm start"
+
+Detected Runtime:
+{runtime}
+
+Detected Framework:
+{framework}
+
+Detected Entry Points:
+{json.dumps(entry_points, indent=2)}
+
+Manifest Files:
+{json.dumps(manifests, indent=2)}
+"""
 
         response = requests.post(
             cls.OLLAMA_URL,
@@ -113,10 +122,70 @@ Do NOT wrap response in ```json.
                 cleaned_lines
             ).strip()
 
+            print(
+                "\nCLEANED OUTPUT:\n",
+                cleaned_output,
+            )
+
+            # Deterministic fallback plan
+
+            fallback_service = {
+                "runtime": runtime,
+                "working_directory": ".",
+            }
+
+            # Node.js defaults
+            if runtime == "nodejs":
+
+                fallback_service[
+                    "install_command"
+                ] = "npm install"
+
+                if framework in [
+                    "nextjs",
+                    "vite",
+                ]:
+
+                    fallback_service[
+                        "start_command"
+                    ] = "npm run dev"
+
+                elif entry_points:
+
+                    fallback_service[
+                        "start_command"
+                    ] = (
+                        f"node {entry_points[0]}"
+                    )
+
+                else:
+
+                    fallback_service[
+                        "start_command"
+                    ] = "npm start"
+
+            # Python defaults
+            elif runtime == "python":
+
+                fallback_service[
+                    "install_command"
+                ] = (
+                    "pip install -r requirements.txt"
+                )
+
+                fallback_service[
+                    "start_command"
+                ] = (
+                    "uvicorn app.main:app "
+                    "--host 0.0.0.0 "
+                    "--port 8000"
+                )
+
             deployment_plan = json.loads(
                 cleaned_output
             )
 
+            # If model returns array directly
             if isinstance(
                     deployment_plan,
                     list
@@ -126,68 +195,117 @@ Do NOT wrap response in ```json.
                         deployment_plan
                 }
 
+            # Safety validation
             if "services" not in deployment_plan:
-                deployment_plan = {
-                    "services": []
-                }
 
-            if "services" not in deployment_plan:
-                deployment_plan = {
-                    "services": []
-                }
+                raise Exception(
+                    "Deployment plan missing services key"
+                )
+
+            # Normalize services
+            normalized_services = []
 
             for service in deployment_plan["services"]:
 
-                workdir = (
-                    service["working_directory"]
+                runtime = (
+                    service.get(
+                        "runtime",
+                        "nodejs"
+                    )
                     .lower()
                 )
 
-                if "frontend" in workdir:
+                if runtime == "node":
+                    runtime = "nodejs"
 
-                    service["runtime"] = "nodejs"
-
-                    service["install_command"] = (
-                        "npm install"
+                working_directory = (
+                    service.get(
+                        "working_directory",
+                        "."
                     )
+                    .strip()
+                )
 
-                    service["start_command"] = (
-                        "npm start"
-                    )
+                install_command = service.get(
+                    "install_command"
+                )
 
-                    if not service.get(
-                            "start_command"
-                    ):
-                        service["start_command"] = (
-                            "npm run dev"
+                start_command = service.get(
+                    "start_command"
+                )
+
+                # Defaults for Node.js
+                if runtime == "nodejs":
+
+                    if not install_command:
+                        install_command = (
+                            "npm install"
                         )
 
-                if "backend" in workdir:
-
-                    service["runtime"] = "python"
-
-                    service["install_command"] = (
-                        "pip install -r requirements.txt"
-                    )
-
-                    service["start_command"] = (
-                        "uvicorn app.main:app "
-                        "--host 0.0.0.0 "
-                        "--port 8000"
-                    )
-
-                    if not service.get(
-                            "start_command"
-                    ):
-                        service["start_command"] = (
-                            "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+                    if not start_command:
+                        start_command = (
+                            "npm start"
                         )
+
+                # Defaults for Python
+                elif runtime == "python":
+
+                    if not install_command:
+                        install_command = (
+                            "pip install -r requirements.txt"
+                        )
+
+                    if not start_command:
+                        start_command = (
+                            "uvicorn app.main:app "
+                            "--host 0.0.0.0 "
+                            "--port 8000"
+                        )
+
+                normalized_service = {
+                    "runtime":
+                        runtime,
+
+                    "working_directory":
+                        working_directory,
+
+                    "install_command":
+                        install_command,
+
+                    "start_command":
+                        start_command,
+                }
+
+                normalized_services.append(
+                    normalized_service
+                )
+
+            deployment_plan = {
+                "services":
+                    normalized_services
+            }
+
+            print(
+                "\nDEPLOYMENT PLAN:\n",
+                deployment_plan,
+            )
 
             return deployment_plan
 
-        except Exception:
+        except Exception as e:
+
+            print(
+                "\nPLANNER ERROR:\n",
+                str(e),
+            )
+
+            print(
+                "\nRAW OUTPUT:\n",
+                raw_output,
+            )
 
             return {
-                "error": "Invalid JSON",
-                "raw_output": raw_output,
+                "services": [
+                    fallback_service
+                ]
             }
