@@ -12,6 +12,11 @@ import docker
 from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator
+
+import httpx
+
+from fastapi.responses import Response
+from app.services.deployment_store import DEPLOYMENT_PORTS
 from app.models.schemas import RuntimeType
 from app.services.execution_engine import (
 ExecutionEngine,
@@ -338,10 +343,21 @@ async def  upload_project(file: UploadFile = File(...)):
                     container.id,
                 )
 
-                service_url = f"http://localhost:{host_port}"
+                service_url = (
+                    f"http://localhost:{host_port}"
+                )
+
+                DEPLOYMENT_PORTS[
+                    deployment_id
+                ] = host_port
 
                 if preview_url is None:
                     preview_url = service_url
+
+                    print(
+                        "\nPREVIEW URL:\n",
+                        preview_url,
+                    )
                     print(
                         "\nPREVIEW URL:\n",
                         preview_url,
@@ -413,6 +429,50 @@ async def  upload_project(file: UploadFile = File(...)):
     }
 
 
+@router.get("/preview/{deployment_id}")
+
+async def preview_proxy(
+    deployment_id: str,
+):
+
+    port = DEPLOYMENT_PORTS.get(
+        deployment_id
+    )
+
+    if not port:
+
+        return Response(
+            content="Deployment not found",
+            status_code=404,
+        )
+
+    target_url = (
+        f"http://localhost:{port}"
+    )
+
+    async with httpx.AsyncClient() as client:
+
+        upstream = await client.get(
+            target_url
+        )
+
+    excluded_headers = {
+        "content-encoding",
+        "transfer-encoding",
+        "connection",
+    }
+
+    headers = {
+        k: v
+        for k, v in upstream.headers.items()
+        if k.lower() not in excluded_headers
+    }
+
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=headers,
+    )
 # ─── Deployments ──────────────────────────────────────────────────────────────
 
 @router.get("/deployments/{deployment_id}", response_model=DeploymentState, tags=["Deployment"])
@@ -562,6 +622,51 @@ async def get_status(
             "status": "unknown",
             "error": str(e),
         }
+
+@router.get("/preview/{deployment_id}")
+
+async def preview_proxy(
+    deployment_id: str,
+):
+
+    port = DEPLOYMENT_PORTS.get(
+        deployment_id
+    )
+
+    if not port:
+
+        return Response(
+            content="Deployment not found",
+            status_code=404,
+        )
+
+    target_url = (
+        f"http://localhost:{port}"
+    )
+
+    async with httpx.AsyncClient() as client:
+
+        upstream = await client.get(
+            target_url
+        )
+
+    excluded_headers = {
+        "content-encoding",
+        "transfer-encoding",
+        "connection",
+    }
+
+    headers = {
+        k: v
+        for k, v in upstream.headers.items()
+        if k.lower() not in excluded_headers
+    }
+
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=headers,
+    )
 
 # Deployement LOGS -------------------------------------------------------
 @router.get(

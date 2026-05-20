@@ -188,8 +188,8 @@ export function DeploymentProvider({
           )
 
           setDeploymentUrl(
-            response.preview_url
-          )
+  `http://localhost:8000/api/preview/${response.deployment_id}`
+)
 
           setDeploymentStatus(
             "running"
