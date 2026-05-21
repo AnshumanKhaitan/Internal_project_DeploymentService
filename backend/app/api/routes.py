@@ -7,6 +7,7 @@ Phase 2: Real ZIP upload, extraction, and project analysis.
 
 import asyncio
 import json
+from sqlmodel import Session
 import logging
 import docker
 from datetime import datetime
@@ -298,8 +299,202 @@ backend_file: UploadFile | None = File(None),):
                 deployment_plan,
             )
 
+            backend_preview_url = None
+
             deployed_services = []
             preview_url = None
+            backend_url = None
+
+            if backend_project_root:
+
+                print(
+                    "\nSTARTING BACKEND DEPLOYMENT\n"
+                )
+
+                backend_scan_result = (
+                    ManifestScanner.scan(
+                        str(backend_project_root)
+                    )
+                )
+
+                backend_manifests = (
+                    backend_scan_result["manifests"]
+                )
+
+                backend_runtime = (
+                    backend_scan_result["runtime"]
+                )
+
+                backend_framework = (
+                    backend_scan_result["framework"]
+                )
+
+                backend_entry_points = (
+                    backend_scan_result["entry_points"]
+                )
+
+                print(
+                    "\nBACKEND MANIFESTS FOUND:\n",
+                    backend_manifests,
+                )
+
+                backend_plan = (
+                    DeploymentPlanner.plan(
+                        manifests=backend_manifests,
+                        runtime=backend_runtime,
+                        framework=backend_framework,
+                        entry_points=backend_entry_points,
+                    )
+                )
+
+                print(
+                    "\nBACKEND DEPLOYMENT PLAN:\n",
+                    backend_plan,
+                )
+
+                for backend_index, backend_service in enumerate(
+                        backend_plan["services"]
+                ):
+
+                    backend_workdir = (
+                        backend_service.get(
+                            "working_directory",
+                            "."
+                        )
+                        .strip()
+                    )
+
+                    backend_runtime_name = (
+                        backend_service.get(
+                            "runtime",
+                            ""
+                        )
+                        .lower()
+                    )
+
+                    if backend_runtime_name == "nodejs":
+                        backend_runtime_name = "node"
+
+                    backend_service["runtime"] = (
+                        backend_runtime_name
+                    )
+
+                    backend_service[
+                        "working_directory"
+                    ] = backend_workdir
+
+                    backend_service_root = (
+                            Path(backend_project_root)
+                            / backend_workdir
+                    ).resolve()
+
+                    print(
+                        "\nBACKEND SERVICE ROOT:\n",
+                        backend_service_root,
+                    )
+
+                    backend_dockerfile = (
+                        ExecutionEngine.generate_dockerfile(
+                            backend_service
+                        )
+                    )
+
+                    ExecutionEngine.save_dockerfile(
+                        str(backend_service_root),
+                        backend_dockerfile,
+                    )
+
+                    backend_image_tag = (
+                        ExecutionEngine.build_image(
+                            str(backend_service_root),
+                            f"{deployment_id}-backend-{backend_index}",
+                        )
+                    )
+
+                    print(
+                        "\nBACKEND IMAGE BUILT:\n",
+                        backend_image_tag,
+                    )
+
+                    backend_container_data = (
+                        ExecutionEngine.run_container(
+                            backend_image_tag,
+                            f"{deployment_id}-backend-{backend_index}",
+                            backend_service,
+                        )
+                    )
+
+                    backend_container = (
+                        backend_container_data[
+                            "container"
+                        ]
+                    )
+
+                    backend_host_port = (
+                        backend_container_data[
+                            "host_port"
+                        ]
+                    )
+
+                    backend_url = (
+                        f"http://localhost:{backend_host_port}"
+                    )
+
+                    print(
+                        "\nBACKEND CONTAINER STARTED:\n",
+                        backend_container.id,
+                    )
+
+                    print(
+                        "\nBACKEND URL:\n",
+                        backend_url,
+                    )
+
+                    deployed_services.append({
+                        "runtime":
+                            backend_service["runtime"],
+
+                        "working_directory":
+                            backend_service[
+                                "working_directory"
+                            ],
+
+                        "url":
+                            backend_url,
+
+                        "service_type":
+                            "backend",
+                    })
+
+                    backend_preview_url = (
+                        backend_url
+                    )
+
+            if backend_url:
+                env_file = (
+                        Path(frontend_project_root)
+                        / ".env"
+                )
+
+                env_content = (
+                    f"NEXT_PUBLIC_API_URL={backend_url}\n"
+                    f"VITE_API_URL={backend_url}\n"
+                    f"REACT_APP_API_URL={backend_url}\n"
+                )
+
+                with open(
+                        env_file,
+                        "w"
+                ) as f:
+                    f.write(env_content)
+
+                print(
+                    "\nFRONTEND ENV INJECTED:\n",
+                    env_content,
+                )
+
+            # Frontend loop
+
 
             for index, service in enumerate(
                     deployment_plan["services"]
@@ -434,172 +629,7 @@ backend_file: UploadFile | None = File(None),):
                         service_url,
                 })
 
-                backend_preview_url = None
 
-                if backend_project_root:
-
-                    print(
-                        "\nSTARTING BACKEND DEPLOYMENT\n"
-                    )
-
-                    backend_scan_result = (
-                        ManifestScanner.scan(
-                            str(backend_project_root)
-                        )
-                    )
-
-                    backend_manifests = (
-                        backend_scan_result["manifests"]
-                    )
-
-                    backend_runtime = (
-                        backend_scan_result["runtime"]
-                    )
-
-                    backend_framework = (
-                        backend_scan_result["framework"]
-                    )
-
-                    backend_entry_points = (
-                        backend_scan_result["entry_points"]
-                    )
-
-                    print(
-                        "\nBACKEND MANIFESTS FOUND:\n",
-                        backend_manifests,
-                    )
-
-                    backend_plan = (
-                        DeploymentPlanner.plan(
-                            manifests=backend_manifests,
-                            runtime=backend_runtime,
-                            framework=backend_framework,
-                            entry_points=backend_entry_points,
-                        )
-                    )
-
-                    print(
-                        "\nBACKEND DEPLOYMENT PLAN:\n",
-                        backend_plan,
-                    )
-
-                    for backend_index, backend_service in enumerate(
-                            backend_plan["services"]
-                    ):
-
-                        backend_workdir = (
-                            backend_service.get(
-                                "working_directory",
-                                "."
-                            )
-                            .strip()
-                        )
-
-                        backend_runtime_name = (
-                            backend_service.get(
-                                "runtime",
-                                ""
-                            )
-                            .lower()
-                        )
-
-                        if backend_runtime_name == "nodejs":
-                            backend_runtime_name = "node"
-
-                        backend_service["runtime"] = (
-                            backend_runtime_name
-                        )
-
-                        backend_service[
-                            "working_directory"
-                        ] = backend_workdir
-
-                        backend_service_root = (
-                                Path(backend_project_root)
-                                / backend_workdir
-                        ).resolve()
-
-                        print(
-                            "\nBACKEND SERVICE ROOT:\n",
-                            backend_service_root,
-                        )
-
-                        backend_dockerfile = (
-                            ExecutionEngine.generate_dockerfile(
-                                backend_service
-                            )
-                        )
-
-                        ExecutionEngine.save_dockerfile(
-                            str(backend_service_root),
-                            backend_dockerfile,
-                        )
-
-                        backend_image_tag = (
-                            ExecutionEngine.build_image(
-                                str(backend_service_root),
-                                f"{deployment_id}-backend-{backend_index}",
-                            )
-                        )
-
-                        print(
-                            "\nBACKEND IMAGE BUILT:\n",
-                            backend_image_tag,
-                        )
-
-                        backend_container_data = (
-                            ExecutionEngine.run_container(
-                                backend_image_tag,
-                                f"{deployment_id}-backend-{backend_index}",
-                                backend_service,
-                            )
-                        )
-
-                        backend_container = (
-                            backend_container_data[
-                                "container"
-                            ]
-                        )
-
-                        backend_host_port = (
-                            backend_container_data[
-                                "host_port"
-                            ]
-                        )
-
-                        backend_url = (
-                            f"http://localhost:{backend_host_port}"
-                        )
-
-                        print(
-                            "\nBACKEND CONTAINER STARTED:\n",
-                            backend_container.id,
-                        )
-
-                        print(
-                            "\nBACKEND URL:\n",
-                            backend_url,
-                        )
-
-                        deployed_services.append({
-                            "runtime":
-                                backend_service["runtime"],
-
-                            "working_directory":
-                                backend_service[
-                                    "working_directory"
-                                ],
-
-                            "url":
-                                backend_url,
-
-                            "service_type":
-                                "backend",
-                        })
-
-                        backend_preview_url = (
-                            backend_url
-                        )
 
         except Exception as e:
 
@@ -656,6 +686,38 @@ backend_file: UploadFile | None = File(None),):
     }
 
 
+@router.post(
+    "/deployments/{deployment_id}/restart",
+    tags=["Deployment"]
+)
+async def restart_deployment(
+    deployment_id: str
+):
+    """
+    Restart all containers
+    for a deployment.
+    """
+
+    lifecycle_service = (
+        ContainerLifecycleService()
+    )
+
+    result = (
+        lifecycle_service
+        .restart_containers_by_deployment(
+            deployment_id
+        )
+    )
+
+    if not result["success"]:
+
+        raise HTTPException(
+            status_code=500,
+            detail=result["error"]
+        )
+
+    return result
+
 
 # ─── Deployments ──────────────────────────────────────────────────────────────
 
@@ -670,49 +732,44 @@ async def get_deployment(deployment_id: str):
         )
 
     return deployment
+
+
 @router.get("/deployments", tags=["Deployment"])
 async def list_deployments():
     return deployment_service.list_deployments()
-@router.delete("/deployments/{deployment_id}", tags=["Deployment"])
-async def delete_deployment(deployment_id: str):
+
+
+@router.delete(
+    "/deployments/{deployment_id}",
+    tags=["Deployment"]
+)
+async def delete_deployment(
+    deployment_id: str
+):
     """
-    Fully delete deployment and cleanup resources.
+    Fully delete deployment
+    and cleanup resources.
     """
 
-    with Session(engine) as session:
-        deployment_record = session.get(
-            DeploymentRecord,
+    lifecycle_service = (
+        ContainerLifecycleService()
+    )
+
+    result = (
+        lifecycle_service
+        .delete_deployment_resources(
             deployment_id
         )
-
-    if not deployment_record:
-        raise HTTPException(
-            status_code=404,
-            detail="Deployment not found"
-        )
-
-    image_name = f"anti-gravity-{deployment_id}".lower()
-
-    workspace_path = f"./tmp/ag-uploads/deployments/{deployment_record.project_name}/{deployment_id}"
-
-    lifecycle_service = ContainerLifecycleService()
-
-    result = lifecycle_service.delete_deployment_resources(
-        deployment_id=deployment_id,
-        image_name=image_name,
-        workspace_path=workspace_path,
     )
 
     if not result["success"]:
+
         raise HTTPException(
             status_code=500,
             detail=result["error"]
         )
 
-    deployment_service.delete_deployment(deployment_id)
-
     return result
-
 
 # ─── Deployment Lifecycle ───────────────────────────────────────────────
 
@@ -724,14 +781,11 @@ async def stop_deployment(deployment_id: str):
     """
     Stop running deployment container.
     """
-
-    container_name = f"container-{deployment_id}".lower()
-
     lifecycle_service = ContainerLifecycleService()
 
-    result = lifecycle_service.stop_container(
-        container_name=container_name
-    )
+    result = lifecycle_service.stop_containers_by_deployment(
+    deployment_id
+)
 
     if not result["success"]:
         raise HTTPException(
@@ -787,17 +841,33 @@ async def get_status(
 
         client = docker.from_env()
 
-        container = (
-            client.containers.get(
-                f"container-{deployment_id}"
+        containers = (
+            client.containers.list(
+                all=True
             )
         )
 
-        container.reload()
+        deployment_containers = []
+
+        for container in containers:
+
+            if (
+                container.name.startswith(
+                    f"container-{deployment_id}"
+                )
+            ):
+
+                deployment_containers.append({
+                    "name":
+                        container.name,
+
+                    "status":
+                        container.status,
+                })
 
         return {
-            "status":
-                container.status
+            "containers":
+                deployment_containers
         }
 
     except Exception as e:
@@ -806,6 +876,7 @@ async def get_status(
             "status": "unknown",
             "error": str(e),
         }
+
 
 @router.get("/preview/{deployment_id}")
 

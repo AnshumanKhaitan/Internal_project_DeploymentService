@@ -202,10 +202,45 @@ Manifest Files:
                     "Deployment plan missing services key"
                 )
 
+            valid_services = []
+
+            for service in deployment_plan.get(
+                    "services",
+                    []
+            ):
+
+                if (
+                        service.get("runtime")
+                        and service.get("start_command")
+                ):
+                    valid_services.append(service)
+
+            deployment_plan["services"] = (
+                valid_services
+            )
+
             if (
                     runtime == "python"
                     and not deployment_plan["services"]
             ):
+
+                start_command = (
+                    "python main.py"
+                )
+
+                if entry_points:
+
+                    first_entry = (
+                        entry_points[0]
+                    )
+
+                    if first_entry.endswith(
+                            ".py"
+                    ):
+                        start_command = (
+                            f"python {first_entry}"
+                        )
+
                 deployment_plan = {
                     "services": [
                         {
@@ -214,7 +249,7 @@ Manifest Files:
                             "install_command":
                                 "pip install -r requirements.txt",
                             "start_command":
-                                "python main.py",
+                                start_command,
                         }
                     ]
                 }
