@@ -386,6 +386,7 @@ backend_file: UploadFile | None = File(None),):
                     ExecutionEngine.run_container(
                         image_tag,
                         f"{deployment_id}-{index}",
+                        service,
                     )
                 )
 
@@ -432,6 +433,173 @@ backend_file: UploadFile | None = File(None),):
                     "url":
                         service_url,
                 })
+
+                backend_preview_url = None
+
+                if backend_project_root:
+
+                    print(
+                        "\nSTARTING BACKEND DEPLOYMENT\n"
+                    )
+
+                    backend_scan_result = (
+                        ManifestScanner.scan(
+                            str(backend_project_root)
+                        )
+                    )
+
+                    backend_manifests = (
+                        backend_scan_result["manifests"]
+                    )
+
+                    backend_runtime = (
+                        backend_scan_result["runtime"]
+                    )
+
+                    backend_framework = (
+                        backend_scan_result["framework"]
+                    )
+
+                    backend_entry_points = (
+                        backend_scan_result["entry_points"]
+                    )
+
+                    print(
+                        "\nBACKEND MANIFESTS FOUND:\n",
+                        backend_manifests,
+                    )
+
+                    backend_plan = (
+                        DeploymentPlanner.plan(
+                            manifests=backend_manifests,
+                            runtime=backend_runtime,
+                            framework=backend_framework,
+                            entry_points=backend_entry_points,
+                        )
+                    )
+
+                    print(
+                        "\nBACKEND DEPLOYMENT PLAN:\n",
+                        backend_plan,
+                    )
+
+                    for backend_index, backend_service in enumerate(
+                            backend_plan["services"]
+                    ):
+
+                        backend_workdir = (
+                            backend_service.get(
+                                "working_directory",
+                                "."
+                            )
+                            .strip()
+                        )
+
+                        backend_runtime_name = (
+                            backend_service.get(
+                                "runtime",
+                                ""
+                            )
+                            .lower()
+                        )
+
+                        if backend_runtime_name == "nodejs":
+                            backend_runtime_name = "node"
+
+                        backend_service["runtime"] = (
+                            backend_runtime_name
+                        )
+
+                        backend_service[
+                            "working_directory"
+                        ] = backend_workdir
+
+                        backend_service_root = (
+                                Path(backend_project_root)
+                                / backend_workdir
+                        ).resolve()
+
+                        print(
+                            "\nBACKEND SERVICE ROOT:\n",
+                            backend_service_root,
+                        )
+
+                        backend_dockerfile = (
+                            ExecutionEngine.generate_dockerfile(
+                                backend_service
+                            )
+                        )
+
+                        ExecutionEngine.save_dockerfile(
+                            str(backend_service_root),
+                            backend_dockerfile,
+                        )
+
+                        backend_image_tag = (
+                            ExecutionEngine.build_image(
+                                str(backend_service_root),
+                                f"{deployment_id}-backend-{backend_index}",
+                            )
+                        )
+
+                        print(
+                            "\nBACKEND IMAGE BUILT:\n",
+                            backend_image_tag,
+                        )
+
+                        backend_container_data = (
+                            ExecutionEngine.run_container(
+                                backend_image_tag,
+                                f"{deployment_id}-backend-{backend_index}",
+                                backend_service,
+                            )
+                        )
+
+                        backend_container = (
+                            backend_container_data[
+                                "container"
+                            ]
+                        )
+
+                        backend_host_port = (
+                            backend_container_data[
+                                "host_port"
+                            ]
+                        )
+
+                        backend_url = (
+                            f"http://localhost:{backend_host_port}"
+                        )
+
+                        print(
+                            "\nBACKEND CONTAINER STARTED:\n",
+                            backend_container.id,
+                        )
+
+                        print(
+                            "\nBACKEND URL:\n",
+                            backend_url,
+                        )
+
+                        deployed_services.append({
+                            "runtime":
+                                backend_service["runtime"],
+
+                            "working_directory":
+                                backend_service[
+                                    "working_directory"
+                                ],
+
+                            "url":
+                                backend_url,
+
+                            "service_type":
+                                "backend",
+                        })
+
+                        backend_preview_url = (
+                            backend_url
+                        )
 
         except Exception as e:
 

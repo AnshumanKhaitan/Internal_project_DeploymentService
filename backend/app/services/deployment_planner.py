@@ -202,6 +202,40 @@ Manifest Files:
                     "Deployment plan missing services key"
                 )
 
+            if (
+                    runtime == "python"
+                    and not deployment_plan["services"]
+            ):
+                deployment_plan = {
+                    "services": [
+                        {
+                            "runtime": "python",
+                            "working_directory": ".",
+                            "install_command":
+                                "pip install -r requirements.txt",
+                            "start_command":
+                                "python main.py",
+                        }
+                    ]
+                }
+
+            if (
+                    runtime == "node"
+                    and not deployment_plan["services"]
+            ):
+                deployment_plan = {
+                    "services": [
+                        {
+                            "runtime": "node",
+                            "working_directory": ".",
+                            "install_command":
+                                "npm install",
+                            "start_command":
+                                "npm start",
+                        }
+                    ]
+                }
+
             # Normalize services
             normalized_services = []
 

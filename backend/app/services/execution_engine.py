@@ -132,13 +132,25 @@ CMD {ExecutionEngine.shell_to_cmd(start_command)}
             cls,
             image_tag: str,
             container_name: str,
+            service: dict,
     ):
 
         import docker
 
         client = docker.from_env()
 
+        runtime = service.get(
+            "runtime",
+            ""
+        ).lower()
+
         runtime_port = 3000
+
+        if runtime == "python":
+            runtime_port = 8000
+
+        elif runtime == "node":
+            runtime_port = 3000
 
         container = client.containers.run(
             image=image_tag,
