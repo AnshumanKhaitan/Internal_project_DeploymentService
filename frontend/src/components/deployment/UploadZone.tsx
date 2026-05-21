@@ -1,6 +1,9 @@
 "use client"
 
-import React, { useCallback } from "react"
+import React, {
+  useCallback,
+  useState,
+} from "react"
 import { Upload, FileArchive, CheckCircle2, AlertCircle, X, Loader2, RefreshCw } from "lucide-react"
 import { useDropzone } from "react-dropzone"
 import { Button } from "@/components/ui/button"
@@ -10,6 +13,8 @@ import { useDeployment } from "@/lib/deployment-context"
 import {
   DeploymentLogs,
 } from "./DeploymentLogs"
+
+
 
 export function UploadZone() {
   const {
@@ -30,28 +35,75 @@ backendFile,
   const isReady = stage === "running"
   const isError = stage === "error"
   const isProcessing = isUploading || isAnalyzing
+  const [
+  selectedFrontend,
+  setSelectedFrontend,
+] = useState<File | null>(null)
 
-  const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      const selected = acceptedFiles[0]
-      if (!selected) return
+const [
+  selectedBackend,
+  setSelectedBackend,
+] = useState<File | null>(null)
 
-      if (!selected.name.endsWith(".zip")) {
-        return
-      }
+const onFrontendDrop = useCallback(
+  (acceptedFiles: File[]) => {
 
-      if (selected.size > 500 * 1024 * 1024) {
-        return
-      }
+    const selected =
+      acceptedFiles[0]
 
-      startUpload(selected)
+    if (!selected) return
+
+    if (
+      !selected.name.endsWith(".zip")
+    ) {
+      return
+    }
+
+    setSelectedFrontend(
+      selected
+    )
+  },
+  []
+)
+
+const onBackendDrop = useCallback(
+  (acceptedFiles: File[]) => {
+
+    const selected =
+      acceptedFiles[0]
+
+    if (!selected) return
+
+    if (
+      !selected.name.endsWith(".zip")
+    ) {
+      return
+    }
+
+    setSelectedBackend(
+      selected
+    )
+  },
+  []
+)
+
+const frontendDropzone =
+  useDropzone({
+    onDrop: onFrontendDrop,
+    accept: {
+      "application/zip": [".zip"],
     },
-    [startUpload]
-  )
+    maxFiles: 1,
+    multiple: false,
+    disabled: isProcessing,
+  })
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { "application/zip": [".zip"] },
+const backendDropzone =
+  useDropzone({
+    onDrop: onBackendDrop,
+    accept: {
+      "application/zip": [".zip"],
+    },
     maxFiles: 1,
     multiple: false,
     disabled: isProcessing,
@@ -62,126 +114,122 @@ backendFile,
     return `${(bytes / 1024 / 1024).toFixed(2)} MB`
   }
 
-  return (
-    <div className="space-y-3">
-      <div
-        {...getRootProps()}
-        className={cn(
-          "relative rounded-xl border-2 border-dashed transition-all duration-300 cursor-pointer group",
-          "flex flex-col items-center justify-center gap-3 p-8",
-          isProcessing && "pointer-events-none",
-          isDragActive
-            ? "border-primary/60 bg-primary/5 upload-zone-active"
-            : "border-border/50 hover:border-primary/30 hover:bg-primary/[0.02]",
-          isReady && "border-chart-2/40 bg-chart-2/[0.03]",
-          isError && "border-destructive/40 bg-destructive/[0.03]"
-        )}
-      >
-        <input {...getInputProps()} id="upload-zip-input" />
+ return (
+  <div className="space-y-4">
 
-        <AnimatePresence mode="wait">
-          {!frontendFile ? (
-            <motion.div
-              key="upload-prompt"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="flex flex-col items-center gap-3"
-            >
-              <div
-                className={cn(
-                  "rounded-xl p-3 transition-all duration-300",
-                  "bg-primary/10 text-primary",
-                  isDragActive && "bg-primary/20 scale-110"
-                )}
-              >
-                <Upload className="h-6 w-6" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-medium text-foreground/90">
-                  {isDragActive ? "Drop your ZIP file here" : "Drag & drop your project ZIP"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  or click to browse · Max 500MB
-                </p>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="file-info"
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="flex items-center gap-3 w-full"
-            >
-              <div
-                className={cn(
-                  "rounded-lg p-2",
-                  isError ? "bg-destructive/10 text-destructive" : "bg-chart-2/10 text-chart-2"
-                )}
-              >
-                <FileArchive className="h-5 w-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground/90 truncate">
-                  {frontendFile?.name}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {formatSize(frontendFile?.size || 0)}
-                  {isAnalyzing && " · Analyzing project..."}
-                  {deploymentStatus === "running"
-  ? "Running"
-  : deploymentStatus}
-                  {isError && " · Upload failed"}
-                </p>
-              </div>
-              {isProcessing && (
-                <Loader2 className="h-5 w-5 text-primary shrink-0 animate-spin" />
-              )}
-              {isReady && (
-                <CheckCircle2 className="h-5 w-5 text-chart-2 shrink-0" />
-              )}
-              {isError && (
-                <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        {/* Upload progress bar */}
-        {isUploading && (
-          <div className="w-full mt-2">
-            <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-gradient-to-r from-primary to-chart-2 rounded-full"
-                initial={{ width: 0 }}
-                animate={{ width: `${uploadProgress}%` }}
-                transition={{ duration: 0.2 }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1.5 text-center">
-              Uploading... {Math.round(uploadProgress)}%
-            </p>
-          </div>
-        )}
+  {/* Frontend Upload */}
+  <div
+    {...frontendDropzone.getRootProps()}
+    className={cn(
+      "relative rounded-xl border-2 border-dashed transition-all duration-300 cursor-pointer group",
+      "flex flex-col items-center justify-center gap-3 p-6 min-h-[220px]",
+      frontendDropzone.isDragActive
+        ? "border-primary/60 bg-primary/5"
+        : "border-border/50 hover:border-primary/30 hover:bg-primary/[0.02]"
+    )}
+  >
+    <input
+      {...frontendDropzone.getInputProps()}
+    />
 
-        {/* Analyzing shimmer */}
-        {isAnalyzing && (
-          <div className="w-full mt-2">
-            <div className="h-1.5 w-full bg-primary/10 rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-gradient-to-r from-primary via-chart-4 to-chart-2 rounded-full"
-                initial={{ width: "30%" }}
-                animate={{ width: ["30%", "70%", "40%", "80%", "50%"] }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1.5 text-center">
-              Scanning project structure...
-            </p>
-          </div>
-        )}
+    <div className="rounded-xl p-3 bg-primary/10 text-primary">
+      <Upload className="h-6 w-6" />
+    </div>
+
+    <div className="text-center">
+      <p className="text-sm font-semibold">
+        Frontend ZIP
+      </p>
+
+      <p className="text-xs text-muted-foreground mt-1">
+        React, Next.js, Vite, Vue
+      </p>
+    </div>
+
+    {selectedFrontend && (
+      <div className="w-full rounded-lg bg-chart-2/10 border border-chart-2/20 p-3">
+        <p className="text-xs font-medium truncate">
+          {selectedFrontend.name}
+        </p>
+
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {formatSize(selectedFrontend.size)}
+        </p>
       </div>
+    )}
+  </div>
+
+  {/* Backend Upload */}
+  <div
+    {...backendDropzone.getRootProps()}
+    className={cn(
+      "relative rounded-xl border-2 border-dashed transition-all duration-300 cursor-pointer group",
+      "flex flex-col items-center justify-center gap-3 p-6 min-h-[220px]",
+      backendDropzone.isDragActive
+        ? "border-chart-4/60 bg-chart-4/5"
+        : "border-border/50 hover:border-chart-4/30 hover:bg-chart-4/[0.02]"
+    )}
+  >
+    <input
+      {...backendDropzone.getInputProps()}
+    />
+
+    <div className="rounded-xl p-3 bg-chart-4/10 text-chart-4">
+      <Upload className="h-6 w-6" />
+    </div>
+
+    <div className="text-center">
+      <p className="text-sm font-semibold">
+        Backend ZIP
+      </p>
+
+      <p className="text-xs text-muted-foreground mt-1">
+        FastAPI, Express, Django
+      </p>
+    </div>
+
+    {selectedBackend && (
+      <div className="w-full rounded-lg bg-chart-4/10 border border-chart-4/20 p-3">
+        <p className="text-xs font-medium truncate">
+          {selectedBackend.name}
+        </p>
+
+        <p className="text-[10px] text-muted-foreground mt-1">
+          {formatSize(selectedBackend.size)}
+        </p>
+      </div>
+    )}
+  </div>
+</div>
+
+<Button
+  className="w-full mt-4 bg-gradient-to-r from-primary via-chart-4 to-chart-2 hover:opacity-90 text-white font-semibold h-11"
+  disabled={!selectedFrontend || isProcessing}
+  onClick={() => {
+
+  if (!selectedFrontend)
+    return
+
+  startUpload(
+    selectedFrontend,
+    selectedBackend || undefined
+  )
+}}
+>
+  {isProcessing ? (
+    <>
+      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+      Deploying...
+    </>
+  ) : (
+    <>
+      <Upload className="h-4 w-4 mr-2" />
+      Deploy Full Stack App
+    </>
+  )}
+</Button>
 
       {/* Error message */}
       <AnimatePresence>
@@ -279,5 +327,6 @@ backendFile,
 )}
 
     </div>
+
   )
 }
