@@ -45,7 +45,8 @@ interface DeploymentContextType {
   error: string | null
 
   // Upload state
-  file: File | null
+  frontendFile: File | null
+backendFile: File | null
   uploadProgress: number
 
   // Analysis results
@@ -61,7 +62,10 @@ interface DeploymentContextType {
   >
 
   // Actions
-  startUpload: (file: File) => Promise<void>
+  startUpload: (
+  frontendFile: File,
+  backendFile?: File
+) => Promise<void>
   reset: () => void
 }
 
@@ -102,8 +106,11 @@ export function DeploymentProvider({
   const [error, setError] =
     useState<string | null>(null)
 
-  const [file, setFile] =
-    useState<File | null>(null)
+   const [frontendFile, setFrontendFile] =
+  useState<File | null>(null)
+
+const [backendFile, setBackendFile] =
+  useState<File | null>(null)
 
   const [uploadProgress, setUploadProgress] =
     useState(0)
@@ -128,11 +135,14 @@ export function DeploymentProvider({
   // ─────────────────────────────────────────────
 
   const startUpload = useCallback(
-    async (selectedFile: File) => {
+    async (
+  selectedFrontendFile: File,
+  selectedBackendFile?: File
+) => {
 
       console.log(
         "STARTING UPLOAD:",
-        selectedFile.name
+        selectedFrontendFile.name
       )
 
       // Reset previous deployment state
@@ -142,15 +152,21 @@ export function DeploymentProvider({
       setDeploymentStatus("idle")
       setAnalysis(null)
 
-      setFile(selectedFile)
+      setFrontendFile(
+  selectedFrontendFile
+)
+
+setBackendFile(
+  selectedBackendFile || null
+)
       setUploadProgress(0)
       setStage("uploading")
 
       try {
 
         const response: UploadResponse =
-          await uploadProject(
-            selectedFile,
+         await uploadProject(
+    selectedFrontendFile,
             (progress) => {
 
               setUploadProgress(progress)
@@ -285,7 +301,8 @@ export function DeploymentProvider({
     setStage("idle")
     setError(null)
 
-    setFile(null)
+    setFrontendFile(null)
+setBackendFile(null)
 
     setUploadProgress(0)
 
@@ -320,7 +337,8 @@ export function DeploymentProvider({
         stage,
         error,
 
-        file,
+        frontendFile,
+backendFile,
         uploadProgress,
 
         deploymentId,

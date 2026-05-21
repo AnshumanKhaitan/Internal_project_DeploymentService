@@ -16,7 +16,8 @@ export function UploadZone() {
     deploymentId,
     stage,
     error,
-    file,
+    frontendFile,
+backendFile,
     deploymentUrl,
     deploymentStatus,
     uploadProgress,
@@ -79,7 +80,7 @@ export function UploadZone() {
         <input {...getInputProps()} id="upload-zip-input" />
 
         <AnimatePresence mode="wait">
-          {!file ? (
+          {!frontendFile ? (
             <motion.div
               key="upload-prompt"
               initial={{ opacity: 0, y: 8 }}
@@ -123,10 +124,10 @@ export function UploadZone() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground/90 truncate">
-                  {file.name}
+                  {frontendFile?.name}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {formatSize(file.size)}
+                  {formatSize(frontendFile?.size || 0)}
                   {isAnalyzing && " · Analyzing project..."}
                   {deploymentStatus === "running"
   ? "Running"
