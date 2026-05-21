@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import AsyncGenerator, Any
 
 import httpx
+from app.db.models import DeploymentRecord
+
+from app.services.deployment_db_service import (
+    DeploymentDBService,
+)
 
 from fastapi.responses import Response
 from app.services.deployment_store import DEPLOYMENT_PORTS
@@ -663,6 +668,28 @@ backend_file: UploadFile | None = File(None),):
         analysis.runtime.value,
         analysis.framework.value,
         analysis.dependencies_count,
+    )
+
+    deployment_record = (
+        DeploymentRecord(
+            deployment_id=deployment_id,
+
+            project_name=project_name,
+
+            frontend_url=preview_url,
+
+            backend_url=backend_preview_url,
+
+            status="running",
+        )
+    )
+
+    DeploymentDBService.create_deployment(
+        deployment_record
+    )
+
+    print(
+        "\nDEPLOYMENT SAVED TO DB\n"
     )
 
     return {
