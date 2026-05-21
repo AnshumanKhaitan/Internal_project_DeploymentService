@@ -11,7 +11,7 @@ import logging
 import docker
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Any
 
 import httpx
 
@@ -73,7 +73,8 @@ async def health_check():
 # ─── Upload ───────────────────────────────────────────────────────────────────
 
 @router.post("/upload", response_model=UploadResponse, tags=["Deployment"])
-async def  upload_project(file: UploadFile = File(...)):
+async def  upload_project(frontend_file: UploadFile = File(...),
+backend_file: UploadFile | None = File(None),):
     """
     Upload a project ZIP file for deployment.
 
@@ -86,7 +87,7 @@ async def  upload_project(file: UploadFile = File(...)):
     5. Returns structured analysis response
     """
     # ── Validate file type ──────────────────────────────────────────────
-    if not file.filename or not file.filename.endswith(".zip"):
+    if not frontend_file.filename or not frontend_file.filename.endswith(".zip"):
         raise HTTPException(
             status_code=400,
             detail="Only .zip files are accepted",
@@ -94,7 +95,7 @@ async def  upload_project(file: UploadFile = File(...)):
 
     # ── Read file content and check size ────────────────────────────────
     try:
-        content = await file.read()
+        content = await frontend_file.read()
     except Exception as e:
         raise HTTPException(
             status_code=400,
@@ -115,7 +116,7 @@ async def  upload_project(file: UploadFile = File(...)):
         )
 
     # ── Create deployment workspace ─────────────────────────────────────
-    project_name = file.filename.rsplit(".", 1)[0]
+    project_name = frontend_file.filename.rsplit(".", 1)[0]
     deployment_id, workspace = create_deployment_workspace(project_name)
 
     # Create deployment entry
@@ -127,9 +128,13 @@ async def  upload_project(file: UploadFile = File(...)):
     deployment.status = DeploymentStatus.UPLOADING
 
     # ── Save ZIP to workspace ───────────────────────────────────────────
-    zip_path = workspace / file.filename
+
+    frontend_zip_path: Path | Any = (
+            workspace
+            / frontend_file.filename
+    )
     try:
-        with open(zip_path, "wb") as f:
+        with open(frontend_zip_path, "wb") as f:
             f.write(content)
     except OSError as e:
         deployment_service.set_error(deployment_id, f"Failed to save upload: {str(e)}")
@@ -139,7 +144,7 @@ async def  upload_project(file: UploadFile = File(...)):
         )
 
     # ── Validate ZIP integrity ──────────────────────────────────────────
-    is_valid, error_msg = validate_zip_file(zip_path)
+    is_valid, error_msg = validate_zip_file(frontend_zip_path)
     if not is_valid:
         deployment_service.set_error(deployment_id, f"Invalid ZIP: {error_msg}")
         raise HTTPException(
@@ -149,10 +154,10 @@ async def  upload_project(file: UploadFile = File(...)):
 
     # ── Safe extraction ─────────────────────────────────────────────────
     deployment.status = DeploymentStatus.RUNNING
-    extract_dir = workspace / "extracted"
-    extract_dir.mkdir(parents=True, exist_ok=True)
+    frontend_extract_dir = workspace / "extracted"
+    frontend_extract_dir.mkdir(parents=True, exist_ok=True)
 
-    success, extract_error, project_root = safe_extract_zip(zip_path, extract_dir)
+    success, extract_error, frontend_project_root = safe_extract_zip(frontend_zip_path, frontend_extract_dir)
     if not success:
         deployment_service.set_error(deployment_id, f"Extraction failed: {extract_error}")
         raise HTTPException(
@@ -162,20 +167,74 @@ async def  upload_project(file: UploadFile = File(...)):
 
     logger.info(
         "Project extracted: %s → %s (%d files)",
-        file.filename,
-        project_root,
-        len(list(project_root.rglob("*"))),
+        frontend_file.filename,
+        frontend_project_root,
+        len(list(frontend_project_root.rglob("*"))),
     )
+
+    backend_project_root = None
+
+    if backend_file:
+
+        backend_content = (
+            await backend_file.read()
+        )
+
+        backend_zip_path = (
+                workspace
+                / backend_file.filename
+        )
+
+        with open(
+                backend_zip_path,
+                "wb"
+        ) as f:
+            f.write(
+                backend_content
+            )
+
+        backend_extract_dir = (
+                workspace
+                / "backend_extracted"
+        )
+
+        backend_extract_dir.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        (
+            backend_success,
+            backend_error,
+            backend_project_root,
+        ) = safe_extract_zip(
+            backend_zip_path,
+            backend_extract_dir,
+        )
+
+        if not backend_success:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Backend extraction failed: "
+                    f"{backend_error}"
+                ),
+            )
+
+        print(
+            "\nBACKEND PROJECT ROOT:\n",
+            backend_project_root,
+        )
 
     # ── Project scanning & analysis ─────────────────────────────────────
     try:
-        analysis = project_scanner.scan(project_root)
+        analysis = project_scanner.scan(frontend_project_root)
         package_json = (
-                project_root / "package.json"
+                frontend_project_root / "package.json"
         )
 
         requirements_txt = (
-                project_root / "requirements.txt"
+                frontend_project_root / "requirements.txt"
         )
 
         if (
@@ -200,7 +259,7 @@ async def  upload_project(file: UploadFile = File(...)):
 
         deployment.analysis = analysis
         scan_result = ManifestScanner.scan(
-            str(project_root)
+            str(frontend_project_root)
         )
 
         manifests = scan_result["manifests"]
@@ -268,7 +327,7 @@ async def  upload_project(file: UploadFile = File(...)):
                 service["working_directory"] = working_directory
 
                 service_root = (
-                        Path(project_root)
+                        Path(frontend_project_root)
                         / working_directory
                 ).resolve()
 
@@ -291,7 +350,7 @@ async def  upload_project(file: UploadFile = File(...)):
                 )
 
                 service_root = (
-                        Path(project_root)
+                        Path(frontend_project_root)
                         / service["working_directory"]
                 )
 
@@ -396,7 +455,7 @@ async def  upload_project(file: UploadFile = File(...)):
 
     # ── Clean up the ZIP file (keep extracted only) ─────────────────────
     try:
-        zip_path.unlink()
+        frontend_zip_path.unlink()
     except OSError:
         pass
 
@@ -429,50 +488,7 @@ async def  upload_project(file: UploadFile = File(...)):
     }
 
 
-@router.get("/preview/{deployment_id}")
 
-async def preview_proxy(
-    deployment_id: str,
-):
-
-    port = DEPLOYMENT_PORTS.get(
-        deployment_id
-    )
-
-    if not port:
-
-        return Response(
-            content="Deployment not found",
-            status_code=404,
-        )
-
-    target_url = (
-        f"http://localhost:{port}"
-    )
-
-    async with httpx.AsyncClient() as client:
-
-        upstream = await client.get(
-            target_url
-        )
-
-    excluded_headers = {
-        "content-encoding",
-        "transfer-encoding",
-        "connection",
-    }
-
-    headers = {
-        k: v
-        for k, v in upstream.headers.items()
-        if k.lower() not in excluded_headers
-    }
-
-    return Response(
-        content=upstream.content,
-        status_code=upstream.status_code,
-        headers=headers,
-    )
 # ─── Deployments ──────────────────────────────────────────────────────────────
 
 @router.get("/deployments/{deployment_id}", response_model=DeploymentState, tags=["Deployment"])

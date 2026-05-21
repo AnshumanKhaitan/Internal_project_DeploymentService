@@ -78,12 +78,24 @@ export interface HealthResponse {
  * Upload a project ZIP file with progress tracking.
  */
 export async function uploadProject(
-  file: File,
+ frontendFile: File,
+backendFile?: File,
   onProgress?: (progress: number) => void
 ): Promise<UploadResponse> {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append(
+  "frontend_file",
+  frontendFile
+)
+
+if (backendFile) {
+
+  formData.append(
+    "backend_file",
+    backendFile
+  )
+}
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/api/upload`);

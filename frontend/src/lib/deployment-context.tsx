@@ -166,7 +166,8 @@ setBackendFile(
 
         const response: UploadResponse =
          await uploadProject(
-    selectedFrontendFile,
+  selectedFrontendFile,
+  selectedBackendFile,
             (progress) => {
 
               setUploadProgress(progress)
