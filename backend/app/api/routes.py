@@ -16,6 +16,9 @@ from typing import AsyncGenerator, Any
 
 import httpx
 from app.db.models import DeploymentRecord
+from app.services.deployment_db_service import (
+    DeploymentDBService,
+)
 
 from app.services.deployment_db_service import (
     DeploymentDBService,
@@ -761,9 +764,18 @@ async def get_deployment(deployment_id: str):
     return deployment
 
 
-@router.get("/deployments", tags=["Deployment"])
+@router.get(
+    "/deployments",
+    tags=["Deployment"]
+)
 async def list_deployments():
-    return deployment_service.list_deployments()
+
+    deployments = (
+        DeploymentDBService
+        .get_all_deployments()
+    )
+
+    return deployments
 
 
 @router.delete(
