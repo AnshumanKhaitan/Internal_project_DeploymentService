@@ -30,6 +30,7 @@ export type PipelineStage =
   | "building"
   | "starting"
   | "running"
+  | "degraded"
   | "error"
 
 export interface EnvVar {
@@ -46,243 +47,162 @@ interface DeploymentContextType {
 
   // Upload state
   frontendFile: File | null
-backendFile: File | null
+  backendFile: File | null
   uploadProgress: number
 
   // Analysis results
   deploymentId: string | null
   analysis: ProjectAnalysis | null
-  deploymentUrl: string | null
+
+  // URLs — always defined (may be null)
+  deploymentUrl: string | null      // frontend proxy URL (via backend /api/preview)
+  frontendUrl: string | null        // raw frontend container URL
+  backendUrl: string | null         // raw backend container URL
   deploymentStatus: string
 
   // Environment variables
   envVars: EnvVar[]
-  setEnvVars: React.Dispatch<
-    React.SetStateAction<EnvVar[]>
-  >
+  setEnvVars: React.Dispatch<React.SetStateAction<EnvVar[]>>
 
   // Actions
-  startUpload: (
-  frontendFile: File,
-  backendFile?: File
-) => Promise<void>
+  startUpload: (frontendFile: File, backendFile?: File) => Promise<void>
   reset: () => void
 }
 
 // ─── Context ─────────────────────────────────────────────────────────────────
 
-const DeploymentContext =
-  createContext<DeploymentContextType | null>(
-    null
-  )
+const DeploymentContext = createContext<DeploymentContextType | null>(null)
 
 export function useDeployment() {
-
-  const ctx = useContext(
-    DeploymentContext
-  )
-
+  const ctx = useContext(DeploymentContext)
   if (!ctx) {
-
-    throw new Error(
-      "useDeployment must be used within DeploymentProvider"
-    )
+    throw new Error("useDeployment must be used within DeploymentProvider")
   }
-
   return ctx
 }
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
-export function DeploymentProvider({
-  children,
-}: {
-  children: ReactNode
-}) {
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
-  const [stage, setStage] =
-    useState<PipelineStage>("idle")
+export function DeploymentProvider({ children }: { children: ReactNode }) {
+  const [stage, setStage] = useState<PipelineStage>("idle")
+  const [error, setError] = useState<string | null>(null)
 
-  const [error, setError] =
-    useState<string | null>(null)
+  const [frontendFile, setFrontendFile] = useState<File | null>(null)
+  const [backendFile, setBackendFile] = useState<File | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
-   const [frontendFile, setFrontendFile] =
-  useState<File | null>(null)
+  const [deploymentId, setDeploymentId] = useState<string | null>(null)
+  const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null)
 
-const [backendFile, setBackendFile] =
-  useState<File | null>(null)
+  // Three distinct URL states
+  const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null)
+  const [frontendUrl, setFrontendUrl] = useState<string | null>(null)
+  const [backendUrl, setBackendUrl] = useState<string | null>(null)
+  const [deploymentStatus, setDeploymentStatus] = useState<string>("idle")
 
-  const [uploadProgress, setUploadProgress] =
-    useState(0)
-
-  const [deploymentId, setDeploymentId] =
-    useState<string | null>(null)
-
-  const [deploymentUrl, setDeploymentUrl] =
-    useState<string | null>(null)
-
-  const [deploymentStatus, setDeploymentStatus] =
-    useState<string>("idle")
-
-  const [analysis, setAnalysis] =
-    useState<ProjectAnalysis | null>(null)
-
-  const [envVars, setEnvVars] =
-    useState<EnvVar[]>([])
+  const [envVars, setEnvVars] = useState<EnvVar[]>([])
 
   // ─────────────────────────────────────────────
   // Upload Flow
   // ─────────────────────────────────────────────
 
   const startUpload = useCallback(
-    async (
-  selectedFrontendFile: File,
-  selectedBackendFile?: File
-) => {
+    async (selectedFrontendFile: File, selectedBackendFile?: File) => {
 
-      console.log(
-        "STARTING UPLOAD:",
-        selectedFrontendFile.name
-      )
-
-      // Reset previous deployment state
+      // Reset previous state
       setError(null)
       setDeploymentId(null)
       setDeploymentUrl(null)
+      setFrontendUrl(null)
+      setBackendUrl(null)
       setDeploymentStatus("idle")
       setAnalysis(null)
-
-      setFrontendFile(
-  selectedFrontendFile
-)
-
-setBackendFile(
-  selectedBackendFile || null
-)
+      setFrontendFile(selectedFrontendFile)
+      setBackendFile(selectedBackendFile || null)
       setUploadProgress(0)
       setStage("uploading")
 
       try {
-
-        const response: UploadResponse =
-         await uploadProject(
-  selectedFrontendFile,
-  selectedBackendFile,
-            (progress) => {
-
-              setUploadProgress(progress)
-
-              if (progress >= 100) {
-
-                setStage("analyzing")
-              }
+        const response: UploadResponse = await uploadProject(
+          selectedFrontendFile,
+          selectedBackendFile,
+          (progress) => {
+            setUploadProgress(progress)
+            if (progress >= 100) {
+              setStage("analyzing")
             }
-          )
-
-        console.log(
-          "FULL RESPONSE:",
-          response
+          }
         )
 
-        // ─────────────────────────────────────────
-        // Deployment Results
-        // ─────────────────────────────────────────
+        // ── Set deployment identity ──────────────────────────────────────
+        const depId = response.deployment_id
+        setDeploymentId(depId)
+        setAnalysis(response.analysis)
 
-        setDeploymentId(
-          response.deployment_id
-        )
+        // ── Set URLs from response ───────────────────────────────────────
+        // preview_url/frontend_url → use backend proxy for iframe embedding
+        const rawFrontend = response.frontend_url || response.preview_url
+        const rawBackend = response.backend_url
 
-        setAnalysis(
-          response.analysis
-        )
-
-        // IMPORTANT FIX
-        if (response.preview_url) {
-
-          console.log(
-            "SETTING PREVIEW URL:",
-            response.preview_url
-          )
-
-          setDeploymentUrl(
-  `http://localhost:8000/api/preview/${response.deployment_id}`
-)
-
-          setDeploymentStatus(
-            "running"
-          )
-
-          setStage("running")
-
-        } else {
-
-          console.error(
-            "preview_url missing from response"
-          )
-
-          setDeploymentStatus(
-            "failed"
-          )
-
-          setStage("error")
+        if (rawFrontend) {
+          // Use backend proxy URL so we go through the backend's /api/preview/:id
+          const proxyUrl = `${API_BASE}/api/preview/${depId}`
+          setDeploymentUrl(proxyUrl)
+          setFrontendUrl(rawFrontend)
         }
 
-        // ─────────────────────────────────────────
-        // Environment Variables
-        // ─────────────────────────────────────────
+        if (rawBackend) {
+          setBackendUrl(rawBackend)
+        }
 
-        if (
-          response.analysis
-            ?.env_template_keys
-            ?.length
-        ) {
-
-          const detected: EnvVar[] =
-            response.analysis.env_template_keys.map(
-              (
-                key,
-                idx
-              ) => ({
-                id:
-                  `env-${Date.now()}-${idx}`,
-
-                key,
-
-                value: "",
-
-                isSecret:
-                  key.includes("SECRET")
-                  || key.includes("KEY")
-                  || key.includes("PASSWORD")
-                  || key.includes("TOKEN"),
-              })
-            )
-
-          setEnvVars(detected)
-
+        // ── Determine stage ──────────────────────────────────────────────
+        const status = response.status
+        if (status === "running" || status === "degraded") {
+          setDeploymentStatus(status)
+          // degraded = partial success (e.g. only backend deployed)
+          setStage(rawFrontend ? "running" : "degraded")
+        } else if (status === "failed") {
+          setDeploymentStatus("failed")
+          setError(response.message || "Deployment failed")
+          setStage("error")
         } else {
+          // Fallback: if we got a deployment_id and any URL, consider running
+          if (depId && (rawFrontend || rawBackend)) {
+            setDeploymentStatus("running")
+            setStage("running")
+          } else {
+            setDeploymentStatus("failed")
+            setError("No deployment URLs returned from server")
+            setStage("error")
+          }
+        }
 
+        // ── Populate detected env vars ───────────────────────────────────
+        if (response.analysis?.env_template_keys?.length) {
+          const detected: EnvVar[] = response.analysis.env_template_keys.map(
+            (key, idx) => ({
+              id: `env-${Date.now()}-${idx}`,
+              key,
+              value: "",
+              isSecret:
+                key.includes("SECRET") ||
+                key.includes("KEY") ||
+                key.includes("PASSWORD") ||
+                key.includes("TOKEN"),
+            })
+          )
+          setEnvVars(detected)
+        } else {
           setEnvVars([])
         }
 
       } catch (err: unknown) {
-
-        console.error(
-          "UPLOAD FAILED:",
-          err
-        )
-
-        const message =
-          err instanceof Error
-            ? err.message
-            : "Upload failed"
-
+        const message = err instanceof Error ? err.message : "Upload failed"
+        console.error("[Deployment] Upload error:", message)
         setError(message)
-
-        setDeploymentStatus(
-          "failed"
-        )
-
+        setDeploymentStatus("failed")
         setStage("error")
       }
     },
@@ -294,39 +214,19 @@ setBackendFile(
   // ─────────────────────────────────────────────
 
   const reset = useCallback(() => {
-
-    console.log(
-      "RESETTING DEPLOYMENT STATE"
-    )
-
     setStage("idle")
     setError(null)
-
     setFrontendFile(null)
-setBackendFile(null)
-
+    setBackendFile(null)
     setUploadProgress(0)
-
     setDeploymentId(null)
-
     setDeploymentUrl(null)
-
+    setFrontendUrl(null)
+    setBackendUrl(null)
     setDeploymentStatus("idle")
-
     setAnalysis(null)
-
     setEnvVars([])
-
   }, [])
-
-  // ─────────────────────────────────────────────
-  // Debug
-  // ─────────────────────────────────────────────
-
-  console.log(
-    "deploymentUrl:",
-    deploymentUrl
-  )
 
   // ─────────────────────────────────────────────
   // Provider
@@ -337,20 +237,17 @@ setBackendFile(null)
       value={{
         stage,
         error,
-
         frontendFile,
-backendFile,
+        backendFile,
         uploadProgress,
-
         deploymentId,
-        deploymentUrl,
-        deploymentStatus,
-
         analysis,
-
+        deploymentUrl,
+        frontendUrl,
+        backendUrl,
+        deploymentStatus,
         envVars,
         setEnvVars,
-
         startUpload,
         reset,
       }}

@@ -35,13 +35,8 @@ export function LivePreview() {
     analysis,
     deploymentId,
     deploymentUrl,
-    file,
+    frontendFile,
   } = useDeployment()
-
-  console.log(
-    "LIVE PREVIEW URL:",
-    deploymentUrl
-  )
 
   const statusConfig = {
     idle: {
@@ -86,6 +81,12 @@ export function LivePreview() {
       dotColor: "bg-chart-2",
     },
 
+    degraded: {
+      label: "Degraded",
+      color: "text-yellow-400",
+      dotColor: "bg-yellow-400",
+    },
+
     error: {
       label: "Error",
       color: "text-destructive",
@@ -94,7 +95,7 @@ export function LivePreview() {
   }
 
   const currentStatus =
-    statusConfig[stage]
+    statusConfig[stage as keyof typeof statusConfig] || statusConfig.idle
 
   return (
 
@@ -270,7 +271,7 @@ export function LivePreview() {
                   </p>
 
                   <p className="text-xs text-muted-foreground">
-                    {file?.name}
+                    {frontendFile?.name}
                   </p>
                 </div>
               </motion.div>
@@ -280,7 +281,7 @@ export function LivePreview() {
 
         {/* Ready Analysis */}
         {
-          stage === "ready"
+          false /* 'ready' stage removed — analysis flows directly to building */
           && analysis
           && !deploymentUrl && (
 
@@ -340,7 +341,7 @@ export function LivePreview() {
 
                       <p className="text-sm font-semibold text-foreground/90">
                         {getRuntimeLabel(
-                          analysis.runtime
+                          analysis?.runtime ?? ''
                         )}
                       </p>
                     </div>
@@ -358,7 +359,7 @@ export function LivePreview() {
 
                       <p className="text-sm font-semibold text-foreground/90">
                         {getFrameworkLabel(
-                          analysis.framework
+                          analysis?.framework ?? ''
                         )}
                       </p>
                     </div>
@@ -375,7 +376,7 @@ export function LivePreview() {
                       </div>
 
                       <p className="text-sm font-semibold text-foreground/90">
-                        {analysis.detected_port}
+                        {analysis?.detected_port}
                       </p>
                     </div>
 
@@ -391,7 +392,7 @@ export function LivePreview() {
                       </div>
 
                       <p className="text-sm font-semibold text-foreground/90">
-                        {analysis.dependencies_count}
+                        {analysis?.dependencies_count}
                       </p>
                     </div>
                   </div>

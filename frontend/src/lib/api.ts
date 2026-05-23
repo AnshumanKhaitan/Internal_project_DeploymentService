@@ -40,17 +40,42 @@ export interface ProjectAnalysis {
   total_size_bytes: number;
 }
 
+export interface ServiceInfo {
+  runtime: string;
+  working_directory: string;
+  url: string;
+  service_type?: string;
+  host_port?: string;
+  container_id?: string;
+  healthy?: boolean;
+}
+
+/**
+ * Canonical upload response — all URL fields are always present (may be null).
+ * This must stay in sync with backend app/models/schemas.py UploadResponse.
+ */
 export interface UploadResponse {
+  success: boolean;
   deployment_id: string;
   status: string;
   message: string;
   analysis: ProjectAnalysis | null;
+
+  // URL fields — always present, may be null
   preview_url: string | null;
-  services?: {
-    runtime: string;
-    working_directory: string;
-    url: string;
-  }[];
+  frontend_url: string | null;
+  backend_url: string | null;
+
+  services: ServiceInfo[];
+}
+
+export interface DeploymentRecord {
+  deployment_id: string;
+  project_name?: string;
+  status?: string;
+  frontend_url?: string | null;
+  backend_url?: string | null;
+  created_at?: string;
 }
 
 export interface DeploymentState {
@@ -75,27 +100,20 @@ export interface HealthResponse {
 // ─── API Functions ───────────────────────────────────────────────────────────
 
 /**
- * Upload a project ZIP file with progress tracking.
+ * Upload project ZIP file(s) and deploy.
+ * Supports optional backend ZIP alongside frontend ZIP.
  */
 export async function uploadProject(
- frontendFile: File,
-backendFile?: File,
+  frontendFile: File,
+  backendFile?: File,
   onProgress?: (progress: number) => void
 ): Promise<UploadResponse> {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
-    formData.append(
-  "frontend_file",
-  frontendFile
-)
-
-if (backendFile) {
-
-  formData.append(
-    "backend_file",
-    backendFile
-  )
-}
+    formData.append("frontend_file", frontendFile);
+    if (backendFile) {
+      formData.append("backend_file", backendFile);
+    }
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/api/upload`);
@@ -110,10 +128,10 @@ if (backendFile) {
     xhr.addEventListener("load", () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const data = JSON.parse(xhr.responseText);
+          const data: UploadResponse = JSON.parse(xhr.responseText);
           resolve(data);
         } catch {
-          reject(new Error("Invalid response from server"));
+          reject(new Error("Invalid JSON response from server"));
         }
       } else {
         try {
@@ -147,16 +165,16 @@ export async function checkHealth(): Promise<HealthResponse> {
 }
 
 /**
- * Get all deployments.
+ * Get all deployments from DB (persists across restarts).
  */
-export async function listDeployments(): Promise<DeploymentState[]> {
+export async function listDeployments(): Promise<DeploymentRecord[]> {
   const res = await fetch(`${API_BASE}/api/deployments`);
   if (!res.ok) throw new Error("Failed to list deployments");
   return res.json();
 }
 
 /**
- * Get a specific deployment by ID.
+ * Get a specific deployment by ID (from in-memory store).
  */
 export async function getDeployment(id: string): Promise<DeploymentState> {
   const res = await fetch(`${API_BASE}/api/deployments/${id}`);
@@ -174,10 +192,22 @@ export async function deleteDeployment(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete deployment");
 }
 
+/**
+ * Get deployment logs.
+ */
+export async function getDeploymentLogs(
+  id: string
+): Promise<{ logs: string[] }> {
+  const res = await fetch(`${API_BASE}/api/deployments/${id}/logs`);
+  if (!res.ok) return { logs: [] };
+  return res.json();
+}
+
 // ─── Display Helpers ─────────────────────────────────────────────────────────
 
 const RUNTIME_LABELS: Record<string, string> = {
   nodejs: "Node.js",
+  node: "Node.js",
   python: "Python",
   go: "Go",
   rust: "Rust",

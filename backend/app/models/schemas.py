@@ -18,6 +18,7 @@ class DeploymentStatus(str, Enum):
     BUILDING = "building"
     DEPLOYING = "deploying"
     RUNNING = "running"
+    DEGRADED = "degraded"
     STOPPED = "stopped"
     FAILED = "failed"
     REMOVING = "removing"
@@ -114,19 +115,35 @@ class DeploymentState(BaseModel):
     url: Optional[str] = None
 
 
+class ServiceInfo(BaseModel):
+    """Info about a deployed service container."""
+    runtime: str
+    working_directory: str
+    url: str
+    service_type: str = "frontend"
+
+
 class UploadResponse(BaseModel):
+    """
+    Canonical upload/deploy response.
 
+    All URL fields are always present (null when not available).
+    Frontend must never assume any of these are missing.
+    """
+    success: bool = True
     deployment_id: str
-
     status: DeploymentStatus
-
     message: str
+    analysis: Optional[ProjectAnalysis] = None
 
-    analysis: ProjectAnalysis | None = None
+    # URL fields — always present, may be null
+    preview_url: Optional[str] = None
+    frontend_url: Optional[str] = None
+    backend_url: Optional[str] = None
 
-    preview_url: str | None = None
-
+    # All deployed service containers
     services: list[dict] = []
+
 
 class HealthResponse(BaseModel):
     """Health check response."""

@@ -93,7 +93,7 @@ export function EnvVariables() {
       )}
 
       {/* No env vars message */}
-      {envVars.length === 0 && stage !== "idle" && (
+      {envVars.length === 0 && !(["idle", "uploading", "analyzing"] as string[]).includes(stage) && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
