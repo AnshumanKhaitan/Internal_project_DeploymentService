@@ -58,6 +58,25 @@ function SectionCard({
 }
 
 export default function DashboardPage() {
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return (
+      <div className="h-screen flex flex-col bg-background text-foreground items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary via-chart-4 to-chart-2 flex items-center justify-center glow-primary animate-pulse">
+            <Rocket className="h-5 w-5 text-white" />
+          </div>
+          <span className="text-xs text-muted-foreground/60 animate-pulse font-medium">Loading Anti Gravity...</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <DeploymentProvider>
       <div className="h-screen flex flex-col overflow-hidden">

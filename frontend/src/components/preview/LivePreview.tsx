@@ -175,109 +175,62 @@ export function LivePreview() {
       </div>
 
       {/* Preview Area */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 relative">
 
-        {/* Background */}
-        <div className="absolute inset-0 grid-pattern opacity-30" />
+        {/* Background — pointer-events-none so it never blocks the iframe */}
+        <div className="absolute inset-0 grid-pattern opacity-30 pointer-events-none" />
 
-        {/* ───────────────────────────────────────── */}
-        {/* REAL LIVE PREVIEW */}
-        {/* ───────────────────────────────────────── */}
+        {/* ─── LIVE PREVIEW IFRAME ─────────────────────────────────────── */}
+        {deploymentUrl && (
+          <iframe
+            key={deploymentUrl}
+            src={deploymentUrl}
+            className="absolute inset-0 w-full h-full border-0 bg-white"
+            style={{ zIndex: 30, pointerEvents: "auto" }}
+            title="Live Preview"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+          />
+        )}
 
-       {
-  deploymentUrl && (
-    <iframe
-  key={deploymentUrl}
-  src={deploymentUrl}
-  className="absolute inset-0 w-full h-full border-0 bg-white z-20"
-/>
-  )
-}
+        {/* Idle — only when no URL, never blocks iframe */}
+        {stage === "idle" && !deploymentUrl && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ zIndex: 10 }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="glass-card rounded-2xl p-8 flex flex-col items-center gap-5 max-w-xs mx-auto pointer-events-auto"
+            >
+              <div className="rounded-xl p-4 bg-muted/30">
+                <Signal className="h-8 w-8 text-muted-foreground/50" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-semibold text-foreground/80">No Active Deployment</p>
+                <p className="text-xs text-muted-foreground mt-1">Upload a project ZIP to get started</p>
+              </div>
+            </motion.div>
+          </div>
+        )}
 
-        {/* Idle */}
-        {
-          stage === "idle" && !deploymentUrl && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-
-              <motion.div
-                initial={{
-                  opacity: 0,
-                  scale: 0.9,
-                }}
-
-                animate={{
-                  opacity: 1,
-                  scale: 1,
-                }}
-
-                className="glass-card rounded-2xl p-8 flex flex-col items-center gap-5 max-w-xs mx-auto"
-              >
-
-                <div className="rounded-xl p-4 bg-muted/30">
-                  <Signal className="h-8 w-8 text-muted-foreground/50" />
-                </div>
-
-                <div className="text-center">
-
-                  <p className="text-sm font-semibold text-foreground/80">
-                    No Active Deployment
-                  </p>
-
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Upload a project ZIP to get started
-                  </p>
-                </div>
-              </motion.div>
-            </div>
-          )
-        }
-
-        {/* Uploading / Analyzing */}
-        {
-          (
-            stage === "uploading"
-            || stage === "analyzing"
-            || stage === "building"
-            || stage === "starting"
-          )
+        {/* Uploading / Building — only when no URL yet, never blocks iframe */}
+        {(stage === "uploading" || stage === "analyzing" || stage === "building" || stage === "starting")
           && !deploymentUrl && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-
-              <motion.div
-                initial={{
-                  opacity: 0,
-                  scale: 0.9,
-                }}
-
-                animate={{
-                  opacity: 1,
-                  scale: 1,
-                }}
-
-                className="glass-card rounded-2xl p-8 flex flex-col items-center gap-5 max-w-xs mx-auto"
-              >
-
-                <div className="relative">
-
-                  <Loader2 className="h-10 w-10 text-primary animate-spin" />
-
-                  <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping" />
-                </div>
-
-                <div className="text-center space-y-2">
-
-                  <p className="text-sm font-semibold text-foreground/80">
-                    Deploying Application...
-                  </p>
-
-                  <p className="text-xs text-muted-foreground">
-                    {frontendFile?.name}
-                  </p>
-                </div>
-              </motion.div>
-            </div>
-          )
-        }
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ zIndex: 10 }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="glass-card rounded-2xl p-8 flex flex-col items-center gap-5 max-w-xs mx-auto"
+            >
+              <div className="relative">
+                <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping" />
+              </div>
+              <div className="text-center space-y-2">
+                <p className="text-sm font-semibold text-foreground/80">Deploying Application...</p>
+                <p className="text-xs text-muted-foreground">{frontendFile?.name}</p>
+              </div>
+            </motion.div>
+          </div>
+        )}
 
         {/* Ready Analysis */}
         {
@@ -413,43 +366,24 @@ export function LivePreview() {
           )
         }
 
-        {/* Error */}
-        {
-          stage === "error" && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-
-              <motion.div
-                initial={{
-                  opacity: 0,
-                  scale: 0.9,
-                }}
-
-                animate={{
-                  opacity: 1,
-                  scale: 1,
-                }}
-
-                className="glass-card rounded-2xl p-8 flex flex-col items-center gap-5 max-w-xs mx-auto"
-              >
-
-                <div className="rounded-xl p-4 bg-destructive/10">
-                  <Signal className="h-8 w-8 text-destructive/70" />
-                </div>
-
-                <div className="text-center">
-
-                  <p className="text-sm font-semibold text-foreground/80">
-                    Deployment Failed
-                  </p>
-
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Check deployment logs
-                  </p>
-                </div>
-              </motion.div>
-            </div>
-          )
-        }
+        {/* Error — only when no URL so it never overlaps a running iframe */}
+        {stage === "error" && !deploymentUrl && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ zIndex: 10 }}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="glass-card rounded-2xl p-8 flex flex-col items-center gap-5 max-w-xs mx-auto pointer-events-auto"
+            >
+              <div className="rounded-xl p-4 bg-destructive/10">
+                <Signal className="h-8 w-8 text-destructive/70" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-semibold text-foreground/80">Deployment Failed</p>
+                <p className="text-xs text-muted-foreground mt-1">Check deployment logs</p>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </div>
 
       {/* URL Bar */}
